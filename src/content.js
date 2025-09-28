@@ -964,23 +964,22 @@ function showResultModal(analysis, srcUrl) {
               <span class="summary-value">${analysis.cgiDetection.metrics.uniqueColors}</span>
             </div>
             ` : ''}
-            ` : ''}
             ${analysis.compositionAnalysis ? `
             <div class="summary-item">
               <span class="summary-label">Composition:</span>
               <span class="summary-value" style="color: ${analysis.compositionAnalysis.confidence >= 80 ? '#ff4757' : analysis.compositionAnalysis.confidence >= 60 ? '#ffa502' : '#4a9eff'}">${analysis.compositionAnalysis.confidence}%</span>
             </div>
             ` : ''}
-            ${analysis.cgiDetection && analysis.cgiDetection.metrics.filtersDetected && analysis.cgiDetection.metrics.filtersDetected.length > 0 ? `
+            ${analysis.cgiAnalysis && analysis.cgiAnalysis.metrics.filtersDetected && analysis.cgiAnalysis.metrics.filtersDetected.length > 0 ? `
             <div class="summary-item">
               <span class="summary-label">Filters:</span>
-              <span class="summary-value" style="color: #ffa726">${analysis.cgiDetection.metrics.filtersDetected.length} detected</span>
+              <span class="summary-value" style="color: #ffa726">${analysis.cgiAnalysis.metrics.filtersDetected.length} detected</span>
             </div>
             ` : ''}
           </div>
         </div>
 
-        ${analysis.cgiDetection && analysis.cgiDetection.metrics.filtersDetected && analysis.cgiDetection.metrics.filtersDetected.length > 0 ? `
+        ${analysis.cgiAnalysis && analysis.cgiAnalysis.metrics.filtersDetected && analysis.cgiAnalysis.metrics.filtersDetected.length > 0 ? `
         <div class="bot-or-not-collapsible">
           <div class="collapsible-header" onclick="toggleCollapsible(this)">
             <h4>🎨 Filter Analysis</h4>
@@ -988,7 +987,7 @@ function showResultModal(analysis, srcUrl) {
           </div>
           <div class="collapsible-content default-collapsed">
             <div class="filter-analysis">
-              ${analysis.cgiDetection.metrics.filtersDetected.map(filter => `
+              ${analysis.cgiAnalysis.metrics.filtersDetected.map(filter => `
                 <div class="filter-item">
                   <div class="filter-header">
                     <span class="filter-name">${filter.name}</span>
@@ -1000,7 +999,6 @@ function showResultModal(analysis, srcUrl) {
             </div>
           </div>
         </div>
-        ` : ''}
         ` : ''}
 
         <div class="bot-or-not-image-preview">

@@ -7,7 +7,6 @@ class AIDetector {
   constructor() {
     this.signatureDb = new SignatureDatabase();
     this.headerParser = new HeaderParser(this.signatureDb);
-    this.cgiDetector = new CGIDetector(this.signatureDb);
   }
 
   /**
@@ -38,29 +37,27 @@ class AIDetector {
       analysis.signatures = signatureAnalysis.signatures || [];
       analysis.details.push(...(signatureAnalysis.details || []));
 
-      // 2. CGI Detection for images (30% weight)
+      // 2. Simple Color Count CGI Detection for images (30% weight)
       let cgiScore = 0;
       if (mediaType === 'image' && element && element.tagName === 'IMG') {
         try {
-          const cgiAnalysis = await this.cgiDetector.analyzeImage(element);
+          const cgiAnalysis = await this.simpleColorCount(element);
           analysis.cgiAnalysis = cgiAnalysis;
           cgiScore = this.calculateCGIScore(cgiAnalysis);
 
           if (cgiAnalysis.isCGI) {
-            analysis.details.push(`CGI Detection: ${cgiAnalysis.reason}`);
+            analysis.details.push(`CGI Detection: ${cgiAnalysis.uniqueColors} unique colors (threshold: 200)`);
 
-            // Add CGI as a signature if it's significant
-            if (cgiAnalysis.confidence > 40) {
-              analysis.signatures.push({
-                tool: 'CGI Detection',
-                signature: `${cgiAnalysis.metrics.uniqueColors} unique colors`,
-                type: 'color-analysis',
-                confidence: cgiAnalysis.confidence > 70 ? 'high' : cgiAnalysis.confidence > 50 ? 'medium' : 'low',
-                source: 'Visual analysis',
-                details: cgiAnalysis.reason,
-                score: cgiScore
-              });
-            }
+            // Add CGI as a signature if detected
+            analysis.signatures.push({
+              tool: 'CGI Detection',
+              signature: `${cgiAnalysis.uniqueColors} unique colors`,
+              type: 'color-analysis',
+              confidence: 'high',
+              source: 'Color count analysis',
+              details: `Limited color palette (${cgiAnalysis.uniqueColors} colors) indicates CGI/AI generation`,
+              score: cgiScore
+            });
           }
         } catch (cgiError) {
           analysis.details.push('CGI analysis failed (CORS or other error)');
@@ -78,10 +75,13 @@ class AIDetector {
 
       // Check if obvious AI signatures were found - if so, set to 100% immediately
       const hasObviousAI = this.hasObviousAISignatures(signatureAnalysis);
+      
+      // Check for definitive AI indicators (very low color count)
+      const hasDefinitiveAI = analysis.cgiAnalysis && analysis.cgiAnalysis.metrics.uniqueColors < 50;
 
       // Calculate unified AI score
-      if (hasObviousAI) {
-        analysis.aiScore = 100; // Immediate 100% for obvious AI tools
+      if (hasObviousAI || hasDefinitiveAI) {
+        analysis.aiScore = 100; // Immediate 100% for obvious AI tools or definitive indicators
       } else {
         analysis.aiScore = Math.min(signatureScore + cgiScore + urlScore + contextScore, 100);
       }
@@ -412,6 +412,56 @@ class AIDetector {
       return urlObj.pathname.split('/').pop() || '';
     } catch (error) {
       return '';
+    }
+  }
+
+  /**
+   * Simple color counting CGI detection
+   * @param {HTMLImageElement} imageElement - Image element to analyze
+   * @returns {Promise<Object>} Simple CGI analysis results
+   */
+  async simpleColorCount(imageElement) {
+    try {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      canvas.width = 300;
+      canvas.height = 300;
+
+      ctx.drawImage(imageElement, 0, 0, 300, 300);
+      const imageData = ctx.getImageData(0, 0, 300, 300);
+      const colors = new Set();
+
+      for (let i = 0; i < imageData.data.length; i += 4) {
+        const r = imageData.data[i];
+        const g = imageData.data[i + 1];
+        const b = imageData.data[i + 2];
+        const a = imageData.data[i + 3];
+
+        if (a < 128) continue; // Skip transparent pixels
+
+        // Group colors to reduce precision and focus on major color differences
+        const colorKey = `${Math.floor(r/8)*8},${Math.floor(g/8)*8},${Math.floor(b/8)*8}`;
+        colors.add(colorKey);
+      }
+
+      const uniqueColors = colors.size;
+      const isCGI = uniqueColors < 200;
+
+      return {
+        isCGI: isCGI,
+        confidence: isCGI ? 100 : 0,
+        uniqueColors: uniqueColors,
+        reason: isCGI ? `Limited color palette (${uniqueColors} colors) indicates CGI/AI generation` : `Rich color palette (${uniqueColors} colors) suggests natural image`,
+        metrics: { uniqueColors }
+      };
+    } catch (error) {
+      return {
+        isCGI: false,
+        confidence: 0,
+        uniqueColors: 0,
+        reason: `Color analysis failed: ${error.message}`,
+        metrics: { uniqueColors: 0 }
+      };
     }
   }
 

@@ -220,15 +220,27 @@ class CompositionAnalyzer {
         metrics.perfectColorRatio = Math.round(perfectColorRatio * 100) / 100;
         metrics.uniqueColors = uniqueColors;
 
-        // Detect AI patterns
-        if (gradientRatio > 0.7) {
+        // Enhanced AI pattern detection for heavy smoothing
+        if (gradientRatio > 0.85) {
+            patterns.push('unrealistic_smoothing');
+            reasons.push('UNREALISTIC: Gradient smoothness >85% - impossible in natural photos');
+        } else if (gradientRatio > 0.8) {
+            patterns.push('extreme_smoothing');
+            reasons.push('Extreme gradient smoothness (>80%) indicates heavy AI processing');
+        } else if (gradientRatio > 0.7) {
             patterns.push('smooth_gradients');
-            reasons.push('High ratio of smooth gradients (AI characteristic)');
+            reasons.push('High ratio of smooth gradients (AI/heavy filtering characteristic)');
         }
 
         if (perfectColorRatio > 0.3) {
             patterns.push('perfect_colors');
             reasons.push('High ratio of perfect color values (AI characteristic)');
+        }
+
+        // Combined heavy filtering detection
+        if (gradientRatio > 0.65 && perfectColorRatio > 0.2) {
+            patterns.push('heavy_filtering');
+            reasons.push('Heavy smoothing + perfect colors indicates AI over-processing');
         }
 
         if (uniqueColors > 1000 && gradientRatio > 0.5) {
@@ -273,13 +285,16 @@ class CompositionAnalyzer {
     calculateCompositionConfidence(patterns, metrics) {
         let score = 0;
 
-        // Pattern-based scoring
+        // Pattern-based scoring - enhanced for heavy smoothing detection
         const patternScores = {
             'ai_dimensions': 20,
             'perfect_ratio': 15,
-            'smooth_gradients': 25,
+            'unrealistic_smoothing': 60,  // DEFINITIVE AI indicator
+            'extreme_smoothing': 50,      // Very strong AI indicator
+            'smooth_gradients': 30,       // Enhanced from 25
+            'heavy_filtering': 45,        // Strong combined indicator
             'perfect_colors': 20,
-            'ai_rendering': 30,
+            'ai_rendering': 35,           // Enhanced from 30
             'high_resolution': 15,
             'perfect_dimensions': 10
         };

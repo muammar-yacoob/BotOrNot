@@ -303,6 +303,39 @@
   transform: translate(0, 0);
 }
 
+/* Progress Circle Animation */
+.progress-ring {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+
+.progress-ring-bg {
+  fill: none;
+  stroke: #333;
+  stroke-width: 3;
+}
+
+.progress-ring-fill {
+  fill: none;
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-dasharray: 125.66;
+  stroke-dashoffset: 125.66;
+  transition: stroke-dashoffset 0.8s ease-in-out, stroke 0.3s ease;
+}
+
+/* ROYGBV Color Scheme for Confidence Levels */
+.progress-ring-fill.confidence-100 { stroke: #ff0000; } /* Red */
+.progress-ring-fill.confidence-high { stroke: #ff8800; } /* Orange */
+.progress-ring-fill.confidence-medium { stroke: #ffff00; } /* Yellow */
+.progress-ring-fill.confidence-low { stroke: #00ff00; } /* Green */
+.progress-ring-fill.confidence-minimal { stroke: #0088ff; } /* Blue */
+.progress-ring-fill.confidence-none { stroke: #8800ff; } /* Violet */
+
 .bot-or-not-icon:hover {
   transform: translate(0, 0) scale(1.05);
 }
@@ -355,21 +388,29 @@
   color: #ff4757;
 }
 
-/* Confidence level colors for bot icons */
+/* Confidence level colors for bot icons - ROYGBV scheme */
+.bot-or-not-icon.confidence-none .bot-confidence {
+  color: #8800ff !important; /* Violet */
+}
+
+.bot-or-not-icon.confidence-minimal .bot-confidence {
+  color: #0088ff !important; /* Blue */
+}
+
 .bot-or-not-icon.confidence-low .bot-confidence {
-  color: #ff4757 !important;
+  color: #00ff00 !important; /* Green */
 }
 
 .bot-or-not-icon.confidence-medium .bot-confidence {
-  color: #ffa726 !important;
+  color: #ffff00 !important; /* Yellow */
 }
 
 .bot-or-not-icon.confidence-high .bot-confidence {
-  color: #4a9eff !important;
+  color: #ff8800 !important; /* Orange */
 }
 
 .bot-or-not-icon.confidence-100 .bot-confidence {
-  color: #27ae60 !important;
+  color: #ff0000 !important; /* Red */
 }
 
 /* 100% Confidence Styling - Only robot emoji and percentage, no circles */
