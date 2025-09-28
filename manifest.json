@@ -17,7 +17,7 @@
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
-      "js": ["src/signatures.js", "src/headerParser.js", "src/cgiDetector.js", "src/compositionAnalyzer.js", "src/content.js"],
+      "js": ["src/signatures.js", "src/headerParser.js", "src/cgiDetector.js", "src/aiDetector.js", "src/compositionAnalyzer.js", "src/content.js"],
       "css": ["src/modal.css"],
       "run_at": "document_end"
     }
