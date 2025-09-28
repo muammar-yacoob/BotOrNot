@@ -64,6 +64,19 @@ class BotOrNotAnalyzer {
 
 }
 
+function debounce(func, wait) {
+  let timeout;
+  return function executedFunction(...args) {
+    const later = () => {
+      clearTimeout(timeout);
+      func(...args);
+    };
+    clearTimeout(timeout);
+    timeout = setTimeout(later, wait);
+  };
+}
+
+
 chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
   if (message.action === "analyzeMedia") {
     const analyzer = new BotOrNotAnalyzer();
@@ -81,8 +94,9 @@ function initAutoScan() {
   scanSocialMediaContent();
 
   // Watch for new content being loaded on any platform
+  const debouncedScan = debounce(scanSocialMediaContent, 300);
   const observer = new MutationObserver(() => {
-    scanSocialMediaContent();
+    debouncedScan();
   });
 
   observer.observe(document.body, {
@@ -716,30 +730,19 @@ function updateIconDisplay(iconContainer, analysis, srcUrl) {
   // Make sure badge is visible for AI content
   iconContainer.style.display = 'flex';
 
+  const confidenceToScore = { high: 85, medium: 50, low: 25, none: 0 };
+
   // If no aiScore, calculate from confidence level for backwards compatibility
   if (!analysis.aiScore && isAI) {
-    // Check for clear tool detections - these should be 100% confidence
-    const hasClearTool = analysis.detectedTool && analysis.detectedTool !== 'unknown' && 
-                        !analysis.detectedTool.includes('CGI Detection') &&
-                        !analysis.detectedTool.includes('video-metadata');
-    
-    // Check for high CGI confidence (80%+) - should be 100% confidence
-    if (hasHighCGIConfidence) {
-      confidenceLevel = 'high';
+    const hasClearTool = analysis.detectedTool && analysis.detectedTool !== 'unknown' &&
+      !analysis.detectedTool.includes('CGI Detection') &&
+      !analysis.detectedTool.includes('video-metadata');
+
+    if (hasHighCGIConfidence || hasClearTool) {
       confidenceScore = 100;
-    } else if (hasClearTool) {
-      // Clear tool detection = 100% confidence
       confidenceLevel = 'high';
-      confidenceScore = 100;
-    } else if (analysis.confidence === 'high' || analysis.signatures?.some(s => s.confidence === 'high')) {
-      confidenceLevel = 'high';
-      confidenceScore = 85;
-    } else if (analysis.confidence === 'medium' || analysis.signatures?.some(s => s.confidence === 'medium')) {
-      confidenceLevel = 'medium';
-      confidenceScore = 50;
     } else {
-      confidenceLevel = 'low';
-      confidenceScore = 25;
+      confidenceScore = confidenceToScore[analysis.confidence] || 25; // Default to 25 if low
     }
   }
 
@@ -878,42 +881,41 @@ if (document.readyState === 'loading') {
   initAutoScan();
 }
 
-function showResultModal(analysis, srcUrl) {
-  removeExistingModal();
-
-  const modal = document.createElement('div');
-  modal.id = 'bot-or-not-modal';
-  modal.className = 'bot-or-not-modal';
-
-  const confidenceColor = {
+function getConfidenceColor(confidence) {
+  const confidenceColors = {
     'high': '#e74c3c',
     'medium': '#f39c12',
     'low': '#3498db',
     'none': '#27ae60',
     'blocked': '#9b59b6',
     'error': '#95a5a6'
-  }[analysis.confidence] || '#95a5a6';
+  };
+  return confidenceColors[confidence] || '#95a5a6';
+}
 
-  const resultText = analysis.confidence === 'blocked' ?
-    '🚫 Analysis Blocked (CORS)' :
-    analysis.confidence === 'error' ?
-    '❌ Analysis Failed' :
-    analysis.isAI ?
-    `🤖 AI Generated (${analysis.confidence} confidence)` :
-    '👨‍🎨 Likely Human Created';
+function getResultText(analysis) {
+  if (analysis.confidence === 'blocked') return '🚫 Analysis Blocked (CORS)';
+  if (analysis.confidence === 'error') return '❌ Analysis Failed';
+  if (analysis.isAI) return `🤖 AI Generated (${analysis.confidence} confidence)`;
+  return '👨‍🎨 Likely Human Created';
+}
 
-  const toolText = analysis.detectedTool && analysis.detectedTool !== 'unknown' ?
+function getToolText(analysis) {
+  return analysis.detectedTool && analysis.detectedTool !== 'unknown' ?
     formatToolName(analysis.detectedTool) : '';
+}
 
-  const signaturesHtml = analysis.signatures && analysis.signatures.length > 0 ?
-    `<div class="bot-or-not-collapsible">
-      <div class="collapsible-header" onclick="toggleCollapsible(this)">
-        <span>🔍 Found Signatures (${analysis.signatures.length})</span>
-        <span class="collapsible-icon">${analysis.signatures.length > 1 ? '▼' : ''}</span>
+function createSignaturesHtml(signatures) {
+  if (!signatures || signatures.length === 0) return '';
+  return `
+    <div class="bot-or-not-collapsible">
+      <div class="collapsible-header">
+        <span>🔍 Found Signatures (${signatures.length})</span>
+        <span class="collapsible-icon">${signatures.length > 1 ? '▼' : ''}</span>
       </div>
-      <div class="collapsible-content ${analysis.signatures.length > 1 ? 'scrollable' : ''}">
+      <div class="collapsible-content ${signatures.length > 1 ? 'scrollable' : ''}">
         <div class="signatures-list">
-          ${analysis.signatures.map(sig => `
+          ${signatures.map(sig => `
             <div class="signature-item confidence-${sig.confidence}">
               <div class="sig-header">
                 <span class="sig-tool">${formatToolName(sig.tool)}</span>
@@ -925,88 +927,105 @@ function showResultModal(analysis, srcUrl) {
           `).join('')}
         </div>
       </div>
+    </div>`;
+}
+
+function createSummaryHtml(analysis) {
+  if (!analysis.aiScore && !analysis.cgiDetection && !analysis.compositionAnalysis) return '';
+
+  const aiScoreHtml = analysis.aiScore ? `
+    <div class="summary-item">
+      <span class="summary-label">AI Score:</span>
+      <span class="summary-value" style="color: ${analysis.aiScore > 70 ? '#ff4757' : analysis.aiScore > 45 ? '#ffa502' : analysis.aiScore > 25 ? '#4a9eff' : '#27ae60'}">${analysis.aiScore}/${analysis.maxScore || 100}</span>
     </div>` : '';
 
-  modal.innerHTML = `
+  const cgiDetectionHtml = analysis.cgiDetection ? `
+    <div class="summary-item">
+      <span class="summary-label">CGI Confidence:</span>
+      <span class="summary-value" style="color: ${analysis.cgiDetection.confidence > 70 ? '#ff4757' : analysis.cgiDetection.confidence > 50 ? '#ffa502' : '#4a9eff'}">${analysis.cgiDetection.confidence}%</span>
+    </div>
+    ${analysis.cgiDetection.metrics.uniqueColors ? `
+    <div class="summary-item">
+      <span class="summary-label">Colors:</span>
+      <span class="summary-value">${analysis.cgiDetection.metrics.uniqueColors}</span>
+    </div>` : ''}` : '';
+
+  const compositionAnalysisHtml = analysis.compositionAnalysis ? `
+    <div class="summary-item">
+      <span class="summary-label">Composition:</span>
+      <span class="summary-value" style="color: ${analysis.compositionAnalysis.confidence >= 80 ? '#ff4757' : analysis.compositionAnalysis.confidence >= 60 ? '#ffa502' : '#4a9eff'}">${analysis.compositionAnalysis.confidence}%</span>
+    </div>` : '';
+
+    const filtersDetectedHtml = analysis.cgiDetection && analysis.cgiDetection.metrics.filtersDetected && analysis.cgiDetection.metrics.filtersDetected.length > 0 ? `
+    <div class="summary-item">
+      <span class="summary-label">Filters:</span>
+      <span class="summary-value" style="color: #ffa726">${analysis.cgiDetection.metrics.filtersDetected.length} detected</span>
+    </div>` : '';
+
+  return `
+    <div class="bot-or-not-analysis-summary">
+      <h4>📊 Analysis Summary</h4>
+      <div class="summary-metrics">
+        ${aiScoreHtml}
+        ${cgiDetectionHtml}
+        ${compositionAnalysisHtml}
+        ${filtersDetectedHtml}
+      </div>
+    </div>`;
+}
+
+function createFiltersHtml(cgiDetection) {
+  if (!cgiDetection || !cgiDetection.metrics.filtersDetected || cgiDetection.metrics.filtersDetected.length === 0) return '';
+  return `
+    <div class="bot-or-not-collapsible">
+      <div class="collapsible-header">
+        <h4>🎨 Filter Analysis</h4>
+        <span class="collapsible-icon">▼</span>
+      </div>
+      <div class="collapsible-content default-collapsed">
+        <div class="filter-analysis">
+          ${cgiDetection.metrics.filtersDetected.map(filter => `
+            <div class="filter-item">
+              <div class="filter-header">
+                <span class="filter-name">${filter.name}</span>
+                <span class="filter-confidence" style="background: ${filter.confidence > 70 ? '#ff4757' : filter.confidence > 50 ? '#ffa726' : '#4a9eff'}; color: white; padding: 2px 6px; border-radius: 4px; font-size: 10px;">${Math.round(filter.confidence)}%</span>
+              </div>
+              <div class="filter-description">${filter.description}</div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    </div>`;
+}
+
+function createModalHtml(analysis, srcUrl) {
+  const confidenceColor = getConfidenceColor(analysis.confidence);
+  const resultText = getResultText(analysis);
+  const toolText = getToolText(analysis);
+  const signaturesHtml = createSignaturesHtml(analysis.signatures);
+  const summaryHtml = createSummaryHtml(analysis);
+  const filtersHtml = createFiltersHtml(analysis.cgiDetection);
+
+  return `
     <div class="bot-or-not-modal-content">
       <div class="bot-or-not-header">
         <h3>🔎 Bot or Not? Analysis</h3>
         <button class="bot-or-not-close">&times;</button>
       </div>
-
       <div class="bot-or-not-body">
         <div class="bot-or-not-result" style="border-color: ${confidenceColor}">
           <div class="result-main">${resultText}</div>
           ${toolText ? `<div class="result-tool">🛠️ ${toolText}</div>` : ''}
           <div class="result-method">Method: ${analysis.method}</div>
         </div>
-
         ${signaturesHtml}
-
-        ${(analysis.aiScore || analysis.cgiDetection || analysis.compositionAnalysis) ? `
-        <div class="bot-or-not-analysis-summary">
-          <h4>📊 Analysis Summary</h4>
-          <div class="summary-metrics">
-            ${analysis.aiScore ? `
-            <div class="summary-item">
-              <span class="summary-label">AI Score:</span>
-              <span class="summary-value" style="color: ${analysis.aiScore > 70 ? '#ff4757' : analysis.aiScore > 45 ? '#ffa502' : analysis.aiScore > 25 ? '#4a9eff' : '#27ae60'}">${analysis.aiScore}/${analysis.maxScore || 100}</span>
-            </div>
-            ` : ''}
-            ${analysis.cgiDetection ? `
-            <div class="summary-item">
-              <span class="summary-label">CGI Confidence:</span>
-              <span class="summary-value" style="color: ${analysis.cgiDetection.confidence > 70 ? '#ff4757' : analysis.cgiDetection.confidence > 50 ? '#ffa502' : '#4a9eff'}">${analysis.cgiDetection.confidence}%</span>
-            </div>
-            ${analysis.cgiDetection.metrics.uniqueColors ? `
-            <div class="summary-item">
-              <span class="summary-label">Colors:</span>
-              <span class="summary-value">${analysis.cgiDetection.metrics.uniqueColors}</span>
-            </div>
-            ` : ''}
-            ${analysis.compositionAnalysis ? `
-            <div class="summary-item">
-              <span class="summary-label">Composition:</span>
-              <span class="summary-value" style="color: ${analysis.compositionAnalysis.confidence >= 80 ? '#ff4757' : analysis.compositionAnalysis.confidence >= 60 ? '#ffa502' : '#4a9eff'}">${analysis.compositionAnalysis.confidence}%</span>
-            </div>
-            ` : ''}
-            ${analysis.cgiAnalysis && analysis.cgiAnalysis.metrics.filtersDetected && analysis.cgiAnalysis.metrics.filtersDetected.length > 0 ? `
-            <div class="summary-item">
-              <span class="summary-label">Filters:</span>
-              <span class="summary-value" style="color: #ffa726">${analysis.cgiAnalysis.metrics.filtersDetected.length} detected</span>
-            </div>
-            ` : ''}
-          </div>
-        </div>
-
-        ${analysis.cgiAnalysis && analysis.cgiAnalysis.metrics.filtersDetected && analysis.cgiAnalysis.metrics.filtersDetected.length > 0 ? `
-        <div class="bot-or-not-collapsible">
-          <div class="collapsible-header" onclick="toggleCollapsible(this)">
-            <h4>🎨 Filter Analysis</h4>
-            <span class="collapsible-icon">▼</span>
-          </div>
-          <div class="collapsible-content default-collapsed">
-            <div class="filter-analysis">
-              ${analysis.cgiAnalysis.metrics.filtersDetected.map(filter => `
-                <div class="filter-item">
-                  <div class="filter-header">
-                    <span class="filter-name">${filter.name}</span>
-                    <span class="filter-confidence" style="background: ${filter.confidence > 70 ? '#ff4757' : filter.confidence > 50 ? '#ffa726' : '#4a9eff'}; color: white; padding: 2px 6px; border-radius: 4px; font-size: 10px;">${Math.round(filter.confidence)}%</span>
-                  </div>
-                  <div class="filter-description">${filter.description}</div>
-                </div>
-              `).join('')}
-            </div>
-          </div>
-        </div>
-        ` : ''}
-
+        ${summaryHtml}
+        ${filtersHtml}
         <div class="bot-or-not-image-preview">
           <img src="${srcUrl}" alt="Analyzed media" style="max-width: 200px; max-height: 150px; object-fit: contain; border-radius: 4px; border: 1px solid #ddd;">
         </div>
-
         <div class="bot-or-not-collapsible">
-          <div class="collapsible-header" onclick="toggleCollapsible(this)">
+          <div class="collapsible-header">
             <h4>📋 Technical Details</h4>
             <span class="collapsible-icon">▶</span>
           </div>
@@ -1017,34 +1036,41 @@ function showResultModal(analysis, srcUrl) {
           </div>
         </div>
       </div>
-
       <div class="bot-or-not-footer">
         <button class="bot-or-not-btn bot-or-not-close-btn">Copy & Close</button>
       </div>
     </div>
   `;
+}
+
+function showResultModal(analysis, srcUrl) {
+  removeExistingModal();
+
+  const modal = document.createElement('div');
+  modal.id = 'bot-or-not-modal';
+  modal.className = 'bot-or-not-modal';
+  modal.innerHTML = createModalHtml(analysis, srcUrl);
 
   document.body.appendChild(modal);
 
-  // Add global toggle function if not exists
-  if (typeof window.toggleCollapsible === 'undefined') {
-    window.toggleCollapsible = function(header) {
+  modal.querySelectorAll('.collapsible-header').forEach(header => {
+    header.addEventListener('click', () => {
       const content = header.nextElementSibling;
       const icon = header.querySelector('.collapsible-icon');
-      
-      if (content.classList.contains('default-collapsed') || content.style.display === 'none') {
+      const isCollapsed = content.classList.contains('default-collapsed') || content.style.display === 'none';
+      if (isCollapsed) {
         content.classList.remove('default-collapsed');
         content.style.display = 'block';
-        icon.textContent = '▼';
+        if (icon) icon.textContent = '▼';
       } else {
         content.style.display = 'none';
-        icon.textContent = '▶';
+        if (icon) icon.textContent = '▶';
       }
-    };
-  }
+    });
+  });
 
   // Add event listeners for buttons
-  const closeButtons = modal.querySelectorAll('.bot-or-not-close');
+  const closeButtons = modal.querySelectorAll('.bot-or-not-close, .bot-or-not-close-btn');
   closeButtons.forEach(button => {
     button.addEventListener('click', () => modal.remove());
   });
