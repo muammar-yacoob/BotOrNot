@@ -620,12 +620,12 @@ function addBotIcon(element, srcUrl, mediaType, videoAnalysis = null) {
   `;
 
   // Start with simple loading state
-  iconContainer.innerHTML = `
-    <div class="icon-content">
-      <span class="bot-icon">🤖</span>
-      <span class="bot-confidence loading">...</span>
-    </div>
-  `;
+    iconContainer.innerHTML = `
+      <div class="icon-content">
+        <img class="bot-icon" src="${chrome.runtime.getURL('assets/icons/bot.png')}" alt="Bot" style="width: 16px; height: 16px;">
+        <span class="bot-confidence loading">...</span>
+      </div>
+    `;
 
   // Position the icon inside the image element
   element.style.position = 'relative';
@@ -667,82 +667,9 @@ async function analyzeAndUpdateIcon(iconContainer, element, srcUrl, mediaType, v
     } else if (srcUrl && srcUrl !== 'video-metadata') {
       // Use unified analysis system - pass element for better analysis
       analysis = await analyzer.analyzeMedia(srcUrl, mediaType, element);
-      
-      // Add CGI detection for images
-      if (mediaType === 'image' && element.tagName === 'IMG') {
-        try {
-          const cgiDetector = new CGIDetector(analyzer.signatureDb);
-          const cgiAnalysis = await cgiDetector.analyzeImage(element);
-          
-          if (cgiAnalysis.isCGI && cgiAnalysis.confidence > 40) {
-            // Enhance analysis with CGI detection results
-            analysis.isAI = true;
-            
-            // High CGI confidence (80%+) should override other detection methods
-            if (cgiAnalysis.confidence >= 80) {
-              analysis.confidence = 'high';
-              analysis.aiScore = 100; // Set to 100% for high CGI confidence
-              analysis.detectedTool = 'CGI Detection';
-            } else {
-              analysis.confidence = cgiAnalysis.confidence > 70 ? 'high' : cgiAnalysis.confidence > 50 ? 'medium' : 'low';
-            }
-            
-            analysis.cgiDetection = cgiAnalysis;
-            analysis.details = analysis.details || [];
-            analysis.details.push(`CGI Detection: ${cgiAnalysis.reason}`);
-            
-            // Add CGI signature if not already detected by other methods
-            if (!analysis.signatures || analysis.signatures.length === 0) {
-              analysis.signatures = [{
-                tool: 'CGI Detection',
-                signature: `Limited colors: ${cgiAnalysis.metrics.uniqueColors}`,
-                type: 'color-analysis',
-                confidence: cgiAnalysis.confidence >= 80 ? 'high' : cgiAnalysis.confidence > 70 ? 'high' : cgiAnalysis.confidence > 50 ? 'medium' : 'low',
-                details: cgiAnalysis.reason
-              }];
-            }
-          }
-        } catch (cgiError) {
-          console.warn('CGI detection failed:', cgiError);
-        }
-        
-        // Add composition analysis for images
-        try {
-          const compositionAnalyzer = new CompositionAnalyzer();
-          const compositionAnalysis = await compositionAnalyzer.analyzeComposition(element);
-          
-          if (compositionAnalysis.isAI && compositionAnalysis.confidence > 50) {
-            // Enhance analysis with composition detection results
-            analysis.isAI = true;
-            
-            // High composition confidence (80%+) should boost overall confidence
-            if (compositionAnalysis.confidence >= 80) {
-              if (!analysis.aiScore || analysis.aiScore < 90) {
-                analysis.aiScore = 90; // High composition confidence
-                analysis.confidence = 'high';
-              }
-              analysis.detectedTool = analysis.detectedTool || 'Composition Analysis';
-            }
-            
-            analysis.compositionAnalysis = compositionAnalysis;
-            analysis.details = analysis.details || [];
-            analysis.details.push(`Composition Analysis: ${compositionAnalysis.reasons.join(', ')}`);
-            
-            // Add composition signature
-            if (!analysis.signatures || analysis.signatures.length === 0) {
-              analysis.signatures = [{
-                tool: 'Composition Analysis',
-                signature: `AI patterns: ${compositionAnalysis.patterns.join(', ')}`,
-                type: 'composition-analysis',
-                confidence: compositionAnalysis.confidence >= 80 ? 'high' : compositionAnalysis.confidence >= 60 ? 'medium' : 'low',
-                details: compositionAnalysis.reasons.join('; ')
-              }];
-            }
-          }
-        } catch (compositionError) {
-          console.warn('Composition analysis failed:', compositionError);
-        }
-      }
+
+      // The unified analysis system already includes CGI detection with filter analysis
+      // No need for redundant CGI detection here
     } else {
       // Fallback for videos without clear URLs
       analysis = {
@@ -764,7 +691,7 @@ async function analyzeAndUpdateIcon(iconContainer, element, srcUrl, mediaType, v
   } catch (error) {
     // Show error state
     iconContainer.innerHTML = `
-      <span class="bot-icon">🤖</span>
+      <img class="bot-icon" src="${chrome.runtime.getURL('assets/icons/icon16.png')}" alt="Bot" style="width: 16px; height: 16px;">
       <span class="bot-confidence error">err</span>
     `;
     iconContainer.title = 'Analysis failed';
@@ -902,7 +829,7 @@ function updateIconDisplay(iconContainer, analysis, srcUrl) {
       </defs>
     </svg>
     <div class="icon-content" style="display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 1; position: relative; width: 100%; height: 100%;">
-      <span class="bot-icon" style="font-size: 16px; line-height: 1; margin-bottom: 1px;">${isAI ? '🤖' : '👤'}</span>
+      <img class="bot-icon" src="${chrome.runtime.getURL('assets/icons/icon32.png')}" alt="Bot" style="width: 16px; height: 16px; margin-bottom: 1px;">
       <span class="bot-confidence" style="font-size: 10px; font-weight: 700; color: ${color.primary}; text-shadow: 0 1px 2px rgba(0,0,0,0.8);">${confidenceScore}%</span>
     </div>
   `;
