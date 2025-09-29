@@ -12,13 +12,13 @@
     "<all_urls>"
   ],
   "background": {
-    "service_worker": "src/background.js"
+    "service_worker": "src/js/background.js"
   },
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
-      "js": ["src/signatures.js", "src/headerParser.js", "src/aiDetector.js", "src/compositionAnalyzer.js", "src/content.js"],
-      "css": ["src/modal.css"],
+      "js": ["src/js/headerParser.js", "src/js/cgiDetector.js", "src/js/content.js"],
+      "css": ["src/styles/modal.css"],
       "run_at": "document_end"
     }
   ],
@@ -27,7 +27,7 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["src/popup.css", "assets/icons/bot.png", "assets/icons/icon16.png", "assets/icons/icon32.png"],
+      "resources": ["src/signatures.json", "src/html/modal.html", "assets/icons/*.png"],
       "matches": ["<all_urls>"]
     }
   ],
@@ -38,7 +38,7 @@
     "128": "assets/icons/icon128.png"
   },
   "action": {
-    "default_popup": "src/popup.html",
+    "default_popup": "src/html/settings.html",
     "default_icon": {
       "16": "assets/icons/icon16.png",
       "32": "assets/icons/icon32.png",

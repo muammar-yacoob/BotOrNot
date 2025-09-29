@@ -1,0 +1,70 @@
+<div class="modal-content">
+  <div class="modal-header">
+    <h3>🔎 Bot or Not? Analysis</h3>
+    <button class="btn">&times;</button>
+  </div>
+  <div class="modal-body">
+    <div class="card card-result" style="border-left-color: {{confidenceColor}}">
+      <div class="text-primary">{{resultText}}</div>
+      <div class="text-secondary" style="display: {{toolDisplay}}">🛠️ {{toolText}}</div>
+      <div class="text-dim">Method: {{method}}</div>
+    </div>
+    
+    <!-- Signatures Section -->
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="text-secondary">🔍 Found Signatures ({{signatureCount}})</span>
+        <span class="text-muted">{{collapsibleIcon}}</span>
+      </div>
+      <div class="collapsible-content {{scrollableClass}}">
+        <div class="list">
+          {{signaturesList}}
+        </div>
+      </div>
+    </div>
+
+    <!-- Summary Section -->
+    <div class="card">
+      <h4 class="text-primary">📊 Analysis Summary</h4>
+      <div class="metrics">
+        {{aiScoreHtml}}
+        {{colorCountHtml}}
+        {{cgiStatusHtml}}
+      </div>
+    </div>
+
+    <!-- Filters Section -->
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <h4 class="text-secondary">🎨 Filter Analysis</h4>
+        <span class="text-muted">▼</span>
+      </div>
+      <div class="collapsible-content collapsed">
+        <div class="list">
+          {{filtersList}}
+        </div>
+      </div>
+    </div>
+    
+    <!-- Image Preview -->
+    <div class="image-preview">
+      <img src="{{srcUrl}}" alt="Analyzed media">
+    </div>
+    
+    <!-- Technical Details -->
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <h4 class="text-secondary">📋 Technical Details</h4>
+        <span class="text-muted">▶</span>
+      </div>
+      <div class="collapsible-content collapsed scrollable">
+        <ul>
+          {{detailsList}}
+        </ul>
+      </div>
+    </div>
+  </div>
+  <div class="modal-footer">
+    <button class="btn">Copy & Close</button>
+  </div>
+</div>
