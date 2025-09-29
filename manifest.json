@@ -18,7 +18,7 @@
     {
       "matches": ["<all_urls>"],
       "js": ["src/js/headerParser.js", "src/js/cgiDetector.js", "src/js/content.js"],
-      "css": ["src/styles/modal.css"],
+      "css": ["src/styles/modal.css", "src/styles/icon.css"],
       "run_at": "document_end"
     }
   ],
@@ -27,7 +27,7 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["src/signatures.json", "src/html/modal.html", "assets/icons/*.png"],
+      "resources": ["src/signatures.json", "src/html/modal.html", "src/js/modal.js", "config.json", "assets/icons/*.png", "src/styles/icon.css", "src/styles/modal.css"],
       "matches": ["<all_urls>"]
     }
   ],

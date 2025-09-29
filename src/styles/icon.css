@@ -1,0 +1,60 @@
+/* Bot or Not Icon Badge Styles */
+
+/* ===== CSS VARIABLES ===== */
+:root {
+  --icon-size: 42px;
+  --icon-transition: all 0.2s ease;
+}
+
+/* ===== ICON BADGE ===== */
+.bot-or-not-icon {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: var(--icon-size);
+  height: var(--icon-size);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  transition: var(--icon-transition);
+  user-select: none;
+  pointer-events: all;
+}
+
+.bot-or-not-icon:hover {
+  transform: scale(1.05);
+}
+
+.bot-or-not-icon:active {
+  transform: scale(0.95);
+  transition: var(--icon-transition);
+}
+
+/* ===== ICON IMAGES ===== */
+.bot-or-not-icon img {
+  width: var(--icon-size);
+  height: var(--icon-size);
+  object-fit: contain;
+  pointer-events: none;
+}
+
+/* ===== CONFIDENCE STATES ===== */
+.bot-or-not-icon.confidence-error {
+  opacity: 0.7;
+}
+
+/* ===== LOADING STATE ===== */
+.bot-or-not-icon[data-loading="true"] {
+  opacity: 0.6;
+}
+
+.bot-or-not-icon[data-loading="true"] img {
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
