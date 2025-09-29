@@ -3,27 +3,27 @@
 /* ===== CSS VARIABLES ===== */
 :root {
   --modal-z-index: 2147483647;
-  --modal-overlay: rgba(0, 0, 0, 0.5);
-  --modal-bg: #ffffff;
-  --modal-border: #e0e0e0;
+  --modal-overlay: rgba(0, 0, 0, 0.7);
+  --modal-bg: #1a1a1a;
+  --modal-border: #333333;
   --modal-radius: 8px;
-  --modal-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  --modal-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
   --modal-font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   
-  --text-primary: #1a1a1a;
-  --text-secondary: #4a4a4a;
-  --text-muted: #6a6a6a;
-  --text-dim: #8a8a8a;
+  --text-primary: #ffffff;
+  --text-secondary: #d0d0d0;
+  --text-muted: #b0b0b0;
+  --text-dim: #888888;
   
-  --primary: #2563eb;
-  --primary-light: #3b82f6;
-  --success: #059669;
-  --warning: #d97706;
-  --error: #dc2626;
+  --primary: #4a90e2;
+  --primary-light: #5ba0f2;
+  --success: #27ae60;
+  --warning: #f39c12;
+  --error: #e74c3c;
   
-  --surface: #f8fafc;
-  --surface-elevated: #ffffff;
-  --border: #e2e8f0;
+  --surface: #2a2a2a;
+  --surface-elevated: #333333;
+  --border: #404040;
   
   --transition: 0.15s ease;
 }

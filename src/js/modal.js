@@ -2,172 +2,257 @@
 window.BotOrNotModal = {
   currentAnalysis: null,
   currentSrcUrl: null,
+  analyzer: null,
 
-  populate(modalElement, analysis, srcUrl) {
-    this.currentAnalysis = analysis;
+  // Initialize the modal with analysis data
+  async initialize(srcUrl, mediaType = 'image') {
+    console.log('BotOrNotModal.initialize called with:', srcUrl, mediaType);
     this.currentSrcUrl = srcUrl;
+    
+    // Initialize analyzer if not already done
+    if (!this.analyzer) {
+      console.log('Creating new BotOrNotAnalyzer');
+      this.analyzer = new BotOrNotAnalyzer();
+    }
 
-    this.populateResult(analysis);
-    this.populateSignatures(analysis.signatures);
-    this.populateSummary(analysis);
-    this.populateCGIAnalysis(analysis.cgiDetection);
-    this.populateDetails(analysis.details);
-    this.populateImage(srcUrl);
+    try {
+      // Find the image element
+      console.log('Finding image element for:', srcUrl);
+      const element = this.findImageElement(srcUrl);
+      console.log('Image element found:', element);
+      
+      // Perform analysis
+      console.log('Starting analysis...');
+      this.currentAnalysis = await this.analyzer.analyzeMedia(srcUrl, mediaType, element);
+      console.log('Analysis completed:', this.currentAnalysis);
+      
+      // Populate the modal
+      console.log('Populating modal...');
+      this.populateAll();
+      console.log('Modal populated successfully');
+      
+      return this.currentAnalysis;
+    } catch (error) {
+      console.error('Modal analysis failed:', error);
+      this.currentAnalysis = this.createErrorResult(error, srcUrl);
+      this.populateAll();
+      return this.currentAnalysis;
+    }
+  },
+
+  findImageElement(srcUrl) {
+    const images = document.querySelectorAll('img');
+    for (const img of images) {
+      if (img.src === srcUrl || img.currentSrc === srcUrl) {
+        return img;
+      }
+    }
+    return null;
+  },
+
+  populateAll() {
+    console.log('populateAll called with analysis:', this.currentAnalysis);
+    if (!this.currentAnalysis) {
+      console.error('No analysis data to populate');
+      return;
+    }
+    
+    try {
+      console.log('Populating result...');
+      this.populateResult(this.currentAnalysis);
+      
+      console.log('Populating signatures...');
+      this.populateSignatures(this.currentAnalysis.signatures);
+      
+      console.log('Populating summary...');
+      this.populateSummary(this.currentAnalysis);
+      
+      console.log('Populating CGI analysis...');
+      this.populateCGIAnalysis(this.currentAnalysis.cgiDetection);
+      
+      console.log('Populating details...');
+      this.populateDetails(this.currentAnalysis.details);
+      
+      console.log('Populating image...');
+      this.populateImage(this.currentSrcUrl);
+      
+      console.log('All sections populated successfully');
+    } catch (error) {
+      console.error('Error during populateAll:', error);
+    }
   },
 
   populateResult(analysis) {
-    const resultMain = document.getElementById('result-main');
-    const resultTool = document.getElementById('result-tool');
-    const resultMethod = document.getElementById('result-method');
-    const resultScore = document.getElementById('result-score');
-
-    resultMain.textContent = this.getResultText(analysis);
-    resultMain.style.color = this.getConfidenceColor(analysis.confidence);
-
+    // Populate main result
+    document.getElementById('result-text').textContent = this.getResultText(analysis);
+    document.getElementById('method-text').textContent = this.formatMethod(analysis.method);
+    
+    // Style result card based on confidence
+    const resultCard = document.getElementById('result-card');
+    if (analysis.confidence === 'error') {
+      resultCard.classList.add('card-error');
+    } else if (analysis.confidence === 'high') {
+      resultCard.classList.add('card-success');
+    } else if (analysis.confidence === 'medium') {
+      resultCard.classList.add('card-warning');
+    }
+    
     if (analysis.detectedTool) {
-      resultTool.textContent = `🛠️ Tool: ${analysis.detectedTool}`;
-      resultTool.style.display = 'block';
-    }
-
-    resultMethod.textContent = `📋 Detection Method: ${this.formatMethod(analysis.method)}`;
-
-    if (analysis.aiScore !== undefined) {
-      resultScore.innerHTML = `<span class="badge badge-${this.getScoreBadgeType(analysis.aiScore)}">${analysis.aiScore}% Confidence</span>`;
-    }
-
-    // Update main result card styling
-    const mainResult = document.getElementById('main-result');
-    if (mainResult) {
-      mainResult.className = `result-card card card-${this.getConfidenceCardType(analysis.confidence)}`;
+      document.getElementById('tool-name').textContent = analysis.detectedTool;
+      document.getElementById('tool-text').style.display = 'block';
     }
   },
 
   populateSignatures(signatures) {
-    const section = document.getElementById('signatures-section');
-    const count = document.getElementById('signature-count');
-    const list = document.getElementById('signatures-list');
-
     if (!signatures || signatures.length === 0) {
-      section.style.display = 'none';
+      document.getElementById('signatures-details').style.display = 'none';
       return;
     }
 
-    section.style.display = 'block';
-    count.textContent = signatures.length;
-
-    list.innerHTML = signatures.map(sig => `
-      <div class="signature-item">
-        <div class="signature-header">
-          <span class="signature-tool">${sig.tool}</span>
-          <span class="confidence-badge">${this.getConfidenceText(sig.confidence)}</span>
+    document.getElementById('signature-count').textContent = signatures.length;
+    const signaturesList = document.getElementById('signatures-list');
+    signaturesList.innerHTML = signatures.map(sig => `
+      <div class="list-item">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+          <span class="text-primary">${sig.tool || 'Unknown Tool'}</span>
+          <span class="badge badge-primary">${sig.confidence || 0}%</span>
         </div>
-        <div class="signature-details">${sig.details}</div>
-        <div class="signature-source">Source: ${sig.source}</div>
+        <div class="text-secondary" style="font-family: monospace;">${sig.details || sig.signature || 'No details'}</div>
+        <div class="text-dim">Source: ${sig.source || 'signature'}</div>
       </div>
     `).join('');
   },
 
   populateSummary(analysis) {
-    const metrics = document.getElementById('summary-metrics');
-    const items = [];
-
+    // Populate summary metrics - ALWAYS show these
+    const summaryMetrics = document.getElementById('summary-metrics');
+    const metrics = [];
+    
+    // Always show AI score if available
     if (analysis.aiScore !== undefined) {
-      items.push(`
-        <div class="metric-item">
+      const scoreColor = analysis.aiScore > 70 ? '#e74c3c' : analysis.aiScore > 45 ? '#f39c12' : '#27ae60';
+      metrics.push(`
+        <div class="metric">
           <span class="metric-label">AI Score:</span>
-          <span class="metric-value" style="color: ${this.getScoreColor(analysis.aiScore)}">${analysis.aiScore}/${analysis.maxScore || 100}</span>
+          <span class="metric-value" style="color: ${scoreColor}">${analysis.aiScore}/${analysis.maxScore || 100}</span>
         </div>
       `);
     }
-
-    if (analysis.cgiDetection?.metrics?.uniqueColors) {
-      items.push(`
-        <div class="metric-item">
+    
+    // Always show color count if CGI analysis was performed
+    if (analysis.cgiDetection && analysis.cgiDetection.metrics) {
+      const uniqueColors = analysis.cgiDetection.metrics.uniqueColors || 0;
+      const gradientRatio = analysis.cgiDetection.metrics.gradientRatio || 0;
+      
+      metrics.push(`
+        <div class="metric">
           <span class="metric-label">Colors Detected:</span>
-          <span class="metric-value">${analysis.cgiDetection.metrics.uniqueColors}</span>
+          <span class="metric-value">${uniqueColors}</span>
         </div>
       `);
+      
+      if (gradientRatio > 0) {
+        metrics.push(`
+          <div class="metric">
+            <span class="metric-label">Gradient Ratio:</span>
+            <span class="metric-value">${gradientRatio}%</span>
+          </div>
+        `);
+      }
     }
-
+    
+    // Always show image type if CGI analysis was performed
     if (analysis.cgiDetection) {
-      const status = analysis.cgiDetection.isCGI ? 'CGI' :
-                    analysis.cgiDetection.isEdited ? 'Edited' : 'Organic';
-      const color = this.getCgiStatusColor(analysis.cgiDetection);
-
-      items.push(`
-        <div class="metric-item">
+      let cgiStatus, cgiColor;
+      if (analysis.cgiDetection.corsBlocked) {
+        cgiStatus = 'CORS Blocked';
+        cgiColor = '#f39c12';
+      } else if (analysis.cgiDetection.isCGI) {
+        cgiStatus = 'CGI';
+        cgiColor = '#e74c3c';
+      } else if (analysis.cgiDetection.isEdited) {
+        cgiStatus = 'Edited';
+        cgiColor = '#f39c12';
+      } else {
+        cgiStatus = 'Organic';
+        cgiColor = '#27ae60';
+      }
+      
+      metrics.push(`
+        <div class="metric">
           <span class="metric-label">Image Type:</span>
-          <span class="metric-value" style="color: ${color}">${status}</span>
+          <span class="metric-value" style="color: ${cgiColor}">${cgiStatus}</span>
         </div>
       `);
     }
-
-    metrics.innerHTML = items.join('');
+    
+    // If no metrics at all, show a message
+    if (metrics.length === 0) {
+      metrics.push(`
+        <div class="metric">
+          <span class="metric-label">Analysis:</span>
+          <span class="metric-value">No data available</span>
+        </div>
+      `);
+    }
+    
+    summaryMetrics.innerHTML = metrics.join('');
   },
 
   populateCGIAnalysis(cgiDetection) {
-    const section = document.getElementById('cgi-section');
-    const details = document.getElementById('cgi-details');
-    const filtersList = document.getElementById('filters-list');
-
-    if (!cgiDetection) {
-      section.style.display = 'none';
-      return;
-    }
-
-    section.style.display = 'block';
-
-    // Show CGI analysis details
-    let cgiHTML = '<div class="metrics mb-2">';
-
-    if (cgiDetection.corsBlocked) {
-      cgiHTML += '<div class="metric"><span class="metric-label">Status:</span><span class="metric-value text-warning">CORS Blocked</span></div>';
-    } else {
-      if (cgiDetection.metrics?.uniqueColors !== undefined) {
-        cgiHTML += `<div class="metric"><span class="metric-label">Unique Colors:</span><span class="metric-value">${cgiDetection.metrics.uniqueColors}</span></div>`;
-      }
-      if (cgiDetection.metrics?.gradientRatio !== undefined) {
-        cgiHTML += `<div class="metric"><span class="metric-label">Gradient Ratio:</span><span class="metric-value">${cgiDetection.metrics.gradientRatio}%</span></div>`;
-      }
-
-      const statusText = cgiDetection.isCGI ? 'CGI Detected' :
-                        cgiDetection.isEdited ? 'Editing Detected' : 'Organic';
-      const statusColor = this.getCgiStatusColor(cgiDetection);
-      cgiHTML += `<div class="metric"><span class="metric-label">Status:</span><span class="metric-value" style="color: ${statusColor}">${statusText}</span></div>`;
-    }
-
-    cgiHTML += '</div>';
-
-    if (cgiDetection.reasons?.length > 0) {
-      cgiHTML += '<div class="text-muted mb-2"><strong>Reasons:</strong></div>';
-      cgiHTML += '<ul class="list text-muted">';
-      cgiDetection.reasons.forEach(reason => {
-        cgiHTML += `<li class="list-item">${reason}</li>`;
-      });
-      cgiHTML += '</ul>';
-    }
-
-    details.innerHTML = cgiHTML;
-
-    // Show filters if detected
-    if (cgiDetection.filtersDetected?.length > 0) {
-      filtersList.innerHTML = cgiDetection.filtersDetected.map(filter => `
-        <div class="filter-item card">
-          <div class="filter-header">
-            <span class="filter-name text-secondary">${filter.name}</span>
-            <span class="badge badge-${this.getFilterBadgeType(filter.confidence)}">${Math.round(filter.confidence)}%</span>
+    // Populate filters
+    if (cgiDetection && cgiDetection.filtersDetected && cgiDetection.filtersDetected.length > 0) {
+      const filtersList = document.getElementById('filters-list');
+      filtersList.innerHTML = cgiDetection.filtersDetected.map(filter => {
+        const badgeClass = filter.confidence > 70 ? 'badge-error' : filter.confidence > 50 ? 'badge-warning' : 'badge-primary';
+        return `
+          <div class="list-item">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+              <span class="text-primary">${filter.name}</span>
+              <span class="badge ${badgeClass}">${Math.round(filter.confidence)}%</span>
+            </div>
+            <div class="text-secondary">${filter.description}</div>
           </div>
-          <div class="filter-description text-muted">${filter.description}</div>
-        </div>
-      `).join('');
+        `;
+      }).join('');
     } else {
-      filtersList.innerHTML = '';
+      document.getElementById('filters-details').style.display = 'none';
     }
   },
 
   populateDetails(details) {
-    const list = document.getElementById('details-list');
-    list.innerHTML = (details || []).map(detail => `<li>${detail}</li>`).join('');
+    // Populate details - always show some information
+    const detailsList = document.getElementById('details-list');
+    const detailsArray = [];
+    
+    // Add analysis details if available
+    if (details && details.length > 0) {
+      detailsArray.push(...details.map(detail => `<li>${detail}</li>`));
+    }
+    
+    // Add method information
+    detailsArray.push(`<li>Detection Method: ${this.currentAnalysis?.method || 'unknown'}</li>`);
+    
+    // Add file info
+    if (this.currentAnalysis?.fileInfo) {
+      detailsArray.push(`<li>File Type: ${this.currentAnalysis.fileInfo.type || 'unknown'}</li>`);
+    }
+    
+    // Add CGI analysis details if available
+    if (this.currentAnalysis?.cgiDetection) {
+      if (this.currentAnalysis.cgiDetection.corsBlocked) {
+        detailsArray.push('<li>CORS Policy: Analysis blocked by cross-origin restrictions</li>');
+      } else {
+        detailsArray.push('<li>Visual Analysis: Performed successfully</li>');
+      }
+    }
+    
+    // Always show at least basic details
+    if (detailsArray.length === 0) {
+      detailsArray.push('<li>Basic analysis performed</li>');
+    }
+    
+    detailsList.innerHTML = detailsArray.join('');
   },
 
   populateImage(srcUrl) {
@@ -276,5 +361,21 @@ window.BotOrNotModal = {
   getFilterBadgeType(confidence) {
     return confidence > 70 ? 'error' :
            confidence > 50 ? 'warning' : 'primary';
+  },
+
+  createErrorResult(error, srcUrl) {
+    return {
+      confidence: 'error',
+      isAI: false,
+      detectedTool: null,
+      method: 'error',
+      details: [`Analysis failed: ${error.message}`],
+      signatures: [],
+      fileInfo: { url: srcUrl },
+      aiScore: 0,
+      maxScore: 100,
+      cgiDetection: null
+    };
   }
 };
+

@@ -7,7 +7,7 @@
   <div class="modal-body">
     <!-- Main Result Card -->
     <div class="card card-result" id="result-card">
-      <div class="text-primary" id="result-text">{{resultText}}</div>
+      <div class="text-primary" id="result-text"></div>
       <div class="text-secondary" id="tool-text" style="display: none;">🛠️ <span id="tool-name"></span></div>
       <div class="text-dim">Method: <span id="method-text"></span></div>
     </div>
@@ -54,147 +54,48 @@
 </div>
 
 <script>
-// Modal controller for Bot or Not
-window.BotOrNotModal = {
-    populate: function(modal, analysis, srcUrl) {
-        // Populate main result
-        document.getElementById('result-text').textContent = analysis.resultText || 'Unknown';
-        document.getElementById('method-text').textContent = analysis.method || 'Unknown';
-        
-        if (analysis.detectedTool) {
-            document.getElementById('tool-name').textContent = analysis.detectedTool;
-            document.getElementById('tool-text').style.display = 'block';
-        }
-
-        // Populate signatures
-        if (analysis.signatures && analysis.signatures.length > 0) {
-            document.getElementById('signature-count').textContent = analysis.signatures.length;
-            const signaturesList = document.getElementById('signatures-list');
-            signaturesList.innerHTML = analysis.signatures.map(sig => `
-                <div class="list-item">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-                        <span class="text-primary">${sig.tool || 'Unknown Tool'}</span>
-                        <span class="badge badge-primary">${sig.confidence || 0}%</span>
-                    </div>
-                    <div class="text-secondary" style="font-family: monospace;">${sig.details || sig.signature || 'No details'}</div>
-                    <div class="text-dim">Source: ${sig.source || 'signature'}</div>
-                </div>
-            `).join('');
-        } else {
-            document.getElementById('signatures-details').style.display = 'none';
-        }
-
-        // Populate summary metrics
-        const summaryMetrics = document.getElementById('summary-metrics');
-        const metrics = [];
-        
-        if (analysis.aiScore) {
-            const scoreColor = analysis.aiScore > 70 ? '#dc2626' : analysis.aiScore > 45 ? '#d97706' : '#059669';
-            metrics.push(`
-                <div class="metric">
-                    <span class="metric-label">AI Score:</span>
-                    <span class="metric-value" style="color: ${scoreColor}">${analysis.aiScore}/${analysis.maxScore || 100}</span>
-                </div>
-            `);
-        }
-        
-        if (analysis.cgiDetection && analysis.cgiDetection.metrics && analysis.cgiDetection.metrics.uniqueColors) {
-            metrics.push(`
-                <div class="metric">
-                    <span class="metric-label">Colors Detected:</span>
-                    <span class="metric-value">${analysis.cgiDetection.metrics.uniqueColors}</span>
-                </div>
-            `);
-        }
-        
-        if (analysis.cgiDetection) {
-            const cgiStatus = analysis.cgiDetection.isCGI ? 'CGI' : analysis.cgiDetection.isEdited ? 'Edited' : 'Organic';
-            const cgiColor = analysis.cgiDetection.isCGI ? '#dc2626' : analysis.cgiDetection.isEdited ? '#d97706' : '#059669';
-            metrics.push(`
-                <div class="metric">
-                    <span class="metric-label">Image Type:</span>
-                    <span class="metric-value" style="color: ${cgiColor}">${cgiStatus}</span>
-                </div>
-            `);
-        }
-        
-        summaryMetrics.innerHTML = metrics.join('');
-
-        // Populate filters
-        if (analysis.cgiDetection && analysis.cgiDetection.filtersDetected && analysis.cgiDetection.filtersDetected.length > 0) {
-            const filtersList = document.getElementById('filters-list');
-            filtersList.innerHTML = analysis.cgiDetection.filtersDetected.map(filter => {
-                const badgeClass = filter.confidence > 70 ? 'badge-error' : filter.confidence > 50 ? 'badge-warning' : 'badge-primary';
-                return `
-                    <div class="list-item">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-                            <span class="text-primary">${filter.name}</span>
-                            <span class="badge ${badgeClass}">${Math.round(filter.confidence)}%</span>
-                        </div>
-                        <div class="text-secondary">${filter.description}</div>
-                    </div>
-                `;
-            }).join('');
-        } else {
-            document.getElementById('filters-details').style.display = 'none';
-        }
-
-        // Populate image preview
-        document.getElementById('analyzed-image').src = srcUrl;
-
-        // Populate details
-        const detailsList = document.getElementById('details-list');
-        if (analysis.details && analysis.details.length > 0) {
-            detailsList.innerHTML = analysis.details.map(detail => `<li>${detail}</li>`).join('');
-        } else {
-            document.getElementById('details-details').style.display = 'none';
-        }
-
-        // Set up event listeners
-        this.setupEventListeners(modal, analysis);
-    },
-
-    setupEventListeners: function(modal, analysis) {
-        // Close button
-        document.getElementById('close-btn').addEventListener('click', () => {
-            modal.remove();
-        });
-
-        // Copy button
-        document.getElementById('copy-btn').addEventListener('click', () => {
-            const text = `Bot or Not Analysis Results:
-${analysis.isAI ? '🤖 AI Generated' : '👨‍🎨 Likely Human Created'} (${analysis.confidence} confidence)
-${analysis.detectedTool ? `Tool: ${analysis.detectedTool}` : ''}
-Method: ${analysis.method}
-
-${analysis.signatures?.length > 0 ? 'Signatures Found:' : ''}
-${analysis.signatures?.map(sig => `- ${sig.tool}: ${sig.signature}`).join('\n') || ''}
-
-${analysis.details?.length > 0 ? 'Details:' : ''}
-${analysis.details?.map(detail => `- ${detail}`).join('\n') || ''}`;
-
-            navigator.clipboard.writeText(text).then(() => {
-                const btn = document.getElementById('copy-btn');
-                btn.textContent = 'Copied!';
-                setTimeout(() => modal.remove(), 1000);
-            }).catch(() => modal.remove());
-        });
-
-        // Close on background click
-        modal.addEventListener('click', (e) => {
-            if (e.target === modal) {
-                modal.remove();
-            }
-        });
-
-        // Close on escape key
-        const handleEscape = (e) => {
-            if (e.key === 'Escape') {
-                modal.remove();
-                document.removeEventListener('keydown', handleEscape);
-            }
-        };
-        document.addEventListener('keydown', handleEscape);
+// Forward control - modal.html calls modal.js to get data
+function initializeModal() {
+    console.log('Modal initialization started');
+    
+    // Get the source URL from the modal data attribute
+    const modal = document.querySelector('[data-bot-or-not-modal]');
+    const srcUrl = modal?.dataset.srcUrl;
+    
+    console.log('Modal found:', modal);
+    console.log('Source URL:', srcUrl);
+    
+    if (!srcUrl) {
+        console.error('No source URL found for modal');
+        document.getElementById('result-text').textContent = '❌ No source URL';
+        return;
     }
-};
+    
+    // Show loading state
+    document.getElementById('result-text').textContent = '🔄 Analyzing...';
+    console.log('Loading state set');
+    
+    // Check if BotOrNotModal is available
+    if (!window.BotOrNotModal) {
+        console.error('BotOrNotModal not available');
+        document.getElementById('result-text').textContent = '❌ Modal controller not loaded';
+        return;
+    }
+    
+    console.log('BotOrNotModal available, starting analysis...');
+    
+    // Call modal.js to perform analysis and populate data
+    window.BotOrNotModal.initialize(srcUrl, 'image')
+        .then(() => {
+            console.log('Modal analysis completed successfully');
+        })
+        .catch(error => {
+            console.error('Modal initialization failed:', error);
+            document.getElementById('result-text').textContent = '❌ Analysis Failed: ' + error.message;
+        });
+}
+
+// Modal initialization is now handled by content.js directly
+// This script is disabled to prevent conflicts
+console.log('Modal HTML loaded - initialization handled by content.js');
 </script>

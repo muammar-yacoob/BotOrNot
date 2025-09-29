@@ -166,6 +166,9 @@ class BotOrNotExtension {
          icon.dataset.isAi = analysis.isAI ? 'true' : 'false';
          icon.dataset.score = analysis.aiScore || '0';
 
+         // Store the complete analysis object for modal use
+         icon._analysisData = analysis;
+
          // Update visual state via CSS classes
          icon.className = `bot-or-not-icon confidence-${analysis.confidence}`;
 
@@ -175,16 +178,45 @@ class BotOrNotExtension {
          icon.innerHTML = `<img src="${chrome.runtime.getURL(iconPath)}" alt="${analysis.isAI ? 'AI' : 'Organic'}" style="width: ${iconSize}; height: ${iconSize};" />`;
 
          // Set tooltip
-         icon.title = analysis.isAI ? 
+         icon.title = analysis.isAI ?
              `AI Detected: ${analysis.aiScore || 0}% confidence${analysis.detectedTool ? ` (${analysis.detectedTool})` : ''}` :
              'Organic Content';
      }
 
     attachIconClickHandler(icon, analysis, srcUrl) {
-        const clickHandler = (e) => {
+        const clickHandler = async (e) => {
             e.stopPropagation();
             e.preventDefault();
-            this.showAnalysisModal(analysis, srcUrl);
+
+            console.log('=== ICON CLICK HANDLER ===');
+            console.log('Using stored analysis data:', icon._analysisData);
+
+            // Use stored analysis data from icon
+            const analysisData = icon._analysisData || analysis;
+
+            try {
+                await this.loadModalTemplate();
+                const modal = await this.createModal(srcUrl);
+                document.body.appendChild(modal);
+                this.setupModalEventListeners(modal);
+
+                // Directly populate modal data
+                if (window.BotOrNotModal && analysisData) {
+                    console.log('Populating modal with analysis:', analysisData);
+                    window.BotOrNotModal.currentAnalysis = analysisData;
+                    window.BotOrNotModal.currentSrcUrl = srcUrl;
+                    window.BotOrNotModal.populateAll();
+                } else {
+                    console.error('Modal or analysis data not available');
+                }
+
+                // Show modal
+                requestAnimationFrame(() => {
+                    modal.classList.add('show');
+                });
+            } catch (error) {
+                console.error('Failed to show modal:', error);
+            }
         };
 
         icon.addEventListener('click', clickHandler);
@@ -219,10 +251,27 @@ class BotOrNotExtension {
 
     async showAnalysisModal(analysis, srcUrl) {
         try {
+            console.log('=== showAnalysisModal called ===');
+            console.log('Analysis data received:', analysis);
+            console.log('Source URL:', srcUrl);
+
             await this.loadModalTemplate();
-            const modal = await this.createModal(analysis, srcUrl);
+            const modal = await this.createModal(srcUrl);
             document.body.appendChild(modal);
             this.setupModalEventListeners(modal);
+
+            // Populate modal data directly instead of relying on modal.html script
+            if (window.BotOrNotModal) {
+                console.log('Setting analysis data on BotOrNotModal...');
+                window.BotOrNotModal.currentAnalysis = analysis;
+                window.BotOrNotModal.currentSrcUrl = srcUrl;
+                console.log('Data set, calling populateAll...');
+                console.log('BotOrNotModal.currentAnalysis now:', window.BotOrNotModal.currentAnalysis);
+                window.BotOrNotModal.populateAll();
+                console.log('populateAll completed');
+            } else {
+                console.error('BotOrNotModal not available!');
+            }
 
             // Trigger animation after DOM insertion
             requestAnimationFrame(() => {
@@ -234,52 +283,53 @@ class BotOrNotExtension {
     }
 
     async loadModalTemplate() {
-        if (window.BotOrNotModalTemplate) return;
+        if (window.BotOrNotModalTemplate && window.BotOrNotModal) return;
 
         try {
-            const response = await fetch(chrome.runtime.getURL('src/html/modal.html'));
-            window.BotOrNotModalTemplate = await response.text();
-
-            // Also load the modal controller script if not already loaded
+            // Load modal.js first if not already loaded
             if (!window.BotOrNotModal) {
+                console.log('Loading modal.js...');
                 const script = document.createElement('script');
                 script.src = chrome.runtime.getURL('src/js/modal.js');
                 document.head.appendChild(script);
+                
                 // Wait for script to load
-                await new Promise(resolve => setTimeout(resolve, 100));
+                await new Promise((resolve, reject) => {
+                    script.onload = resolve;
+                    script.onerror = reject;
+                    setTimeout(() => reject(new Error('Modal script load timeout')), 2000);
+                });
+                console.log('Modal.js loaded successfully');
+            }
+
+            // Load modal template
+            if (!window.BotOrNotModalTemplate) {
+                console.log('Loading modal template...');
+                const response = await fetch(chrome.runtime.getURL('src/html/modal.html'));
+                window.BotOrNotModalTemplate = await response.text();
+                console.log('Modal template loaded successfully');
             }
         } catch (error) {
-            throw new Error('Modal template not available');
+            console.error('Failed to load modal resources:', error);
+            throw new Error('Modal template not available: ' + error.message);
         }
     }
 
-    async createModal(analysis, srcUrl) {
+    async createModal(srcUrl) {
         const modal = document.createElement('div');
         modal.dataset.botOrNotModal = 'true';
+        modal.dataset.srcUrl = srcUrl;
         modal.className = 'modal';
 
         // Load modal styling
         await this.loadModalStyles();
 
-        // Replace placeholders in template
-        let template = window.BotOrNotModalTemplate;
-        
-        // Basic placeholder replacements
-        const confidenceColor = getConfidenceColor(analysis.confidence);
-        const resultText = getResultText(analysis);
-        
-        template = template.replace(/\{\{resultText\}\}/g, resultText);
-
         // Set template content
-        modal.innerHTML = template;
-
-        // Forward control to modal - let it populate itself
-        if (window.BotOrNotModal) {
-            window.BotOrNotModal.populate(modal, analysis, srcUrl);
-        }
+        modal.innerHTML = window.BotOrNotModalTemplate;
 
         return modal;
     }
+
 
     async loadModalStyles() {
         if (document.querySelector('link[data-bot-or-not-modal-styles]')) return;
@@ -382,56 +432,38 @@ class BotOrNotExtension {
 // Analyzer class for AI detection
 class BotOrNotAnalyzer {
   constructor() {
-    this.signatureDb = new SimpleSignatureDb();
-    this.headerParser = new HeaderParser(this.signatureDb);
+    this.aiSignatureDetector = new AISignatureDetector();
     this.cgiDetector = new CGIDetector();
   }
 
   async analyzeMedia(srcUrl, mediaType, element = null) {
     try {
-      await this.signatureDb.initPromise;
+      // AI signature detection
+      const signatureResult = await this.aiSignatureDetector.detectAISignatures(srcUrl);
 
-            // Get file content via background script
-            const fileContent = await this.fetchFileContent(srcUrl);
+      // Convert to expected format for backward compatibility
+      const headerAnalysis = {
+        signatures: signatureResult.signatures || [],
+        details: signatureResult.details || [],
+        fileType: signatureResult.fileType
+      };
 
-            // Header analysis
-      const headerAnalysis = fileContent ? 
-        await this.headerParser.parseFile(fileContent, srcUrl) : 
-        { signatures: [], confidence: 'none', details: ['Could not fetch file content'] };
-
-            // CGI analysis for images
+      // CGI analysis for images
       let cgiAnalysis = null;
       if (mediaType === 'image' && element?.tagName === 'IMG') {
         try {
           cgiAnalysis = await this.cgiDetector.analyzeImage(element);
         } catch (cgiError) {
-                    console.warn('CGI analysis failed:', cgiError.message);
-                }
-            }
-
-            return this.buildAnalysisResult(headerAnalysis, cgiAnalysis, srcUrl, mediaType);
-
-        } catch (error) {
-            return this.createErrorResult(error, srcUrl);
+          console.warn('CGI analysis failed:', cgiError.message);
         }
-    }
+      }
 
-    async fetchFileContent(url) {
-        return new Promise((resolve, reject) => {
-            chrome.runtime.sendMessage(
-                { action: 'getImageData', url },
-                (response) => {
-                    if (chrome.runtime.lastError) {
-                        reject(new Error(chrome.runtime.lastError.message));
-                    } else if (response?.success) {
-                        resolve(response.data);
-                    } else {
-                        reject(new Error(response?.error || 'Fetch failed'));
-                    }
-                }
-            );
-        });
+      return this.buildAnalysisResult(headerAnalysis, cgiAnalysis, srcUrl, mediaType);
+
+    } catch (error) {
+      return this.createErrorResult(error, srcUrl);
     }
+  }
 
     buildAnalysisResult(headerAnalysis, cgiAnalysis, srcUrl, mediaType) {
       let isAI = false;
@@ -467,7 +499,7 @@ class BotOrNotAnalyzer {
           aiScore = cgiAnalysis.confidence || 70;
           details.push(`Photo editing detected: ${cgiAnalysis.reasons.join(', ')}`);
         } else {
-          // Organic image
+          // Organic image - but still show CGI analysis results
           confidence = 'none';
           method = 'visual-analysis';
           details.push('Visual analysis suggests organic content');
@@ -482,6 +514,19 @@ class BotOrNotAnalyzer {
         }
       }
 
+      // Always include CGI analysis results if available, even for organic images
+      const enrichedCGIAnalysis = cgiAnalysis ? {
+        ...cgiAnalysis,
+        // Ensure metrics are always present
+        metrics: {
+          uniqueColors: cgiAnalysis.metrics?.uniqueColors || 0,
+          gradientRatio: cgiAnalysis.metrics?.gradientRatio || 0,
+          ...cgiAnalysis.metrics
+        },
+        // Ensure filters detected is always an array
+        filtersDetected: cgiAnalysis.filtersDetected || []
+      } : null;
+
       return {
         confidence,
         isAI,
@@ -492,7 +537,7 @@ class BotOrNotAnalyzer {
         fileInfo: { url: srcUrl, type: mediaType },
         aiScore,
         maxScore: 100,
-        cgiDetection: cgiAnalysis
+        cgiDetection: enrichedCGIAnalysis
       };
     }
 
@@ -512,44 +557,6 @@ class BotOrNotAnalyzer {
     }
   }
 
-// Simple signature database
-class SimpleSignatureDb {
-    constructor() {
-        this.signatures = null;
-        this.initPromise = this.init();
-    }
-
-    async init() {
-        if (this.signatures) return;
-        try {
-            const response = await fetch(chrome.runtime.getURL('src/signatures.json'));
-            this.signatures = response.ok ? await response.json() : [];
-        } catch (e) {
-            this.signatures = [];
-        }
-    }
-
-    containsAISignature(text) {
-        if (!this.signatures || !text) return null;
-
-        const lowerText = text.toLowerCase();
-        for (const signature of this.signatures) {
-            if (lowerText.includes(signature.toLowerCase())) {
-                return {
-                    tool: this.formatToolName(signature),
-                    signature: signature,
-                    type: 'text-signature',
-                    confidence: 'high'
-                };
-            }
-        }
-        return null;
-    }
-
-    formatToolName(signature) {
-        return signature.replace(/[-_]/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-    }
-}
 
 // Global API is set up in setupModalEventListeners method when modal is created
 

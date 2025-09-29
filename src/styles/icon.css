@@ -2,15 +2,15 @@
 
 /* ===== CSS VARIABLES ===== */
 :root {
-  --icon-size: 42px;
-  --icon-transition: all 0.2s ease;
+  --icon-size: 28px;
+  --icon-transition: all 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
 }
 
 /* ===== ICON BADGE ===== */
 .bot-or-not-icon {
   position: absolute;
-  top: 0;
-  right: 0;
+  top: 8px;
+  right: 8px;
   width: var(--icon-size);
   height: var(--icon-size);
   cursor: pointer;
