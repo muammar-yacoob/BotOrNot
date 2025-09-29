@@ -27,7 +27,7 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["src/signatures.json", "src/html/modal.html", "src/js/modal.js", "config.json", "assets/icons/*.png", "src/styles/icon.css", "src/styles/modal.css"],
+      "resources": ["src/signatures.json", "src/html/modal.html", "src/js/modalManager.js", "config.json", "assets/icons/*.png", "src/styles/icon.css", "src/styles/modal.css"],
       "matches": ["<all_urls>"]
     }
   ],

@@ -4,15 +4,20 @@
 :root {
   --icon-size: 28px;
   --icon-transition: all 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+  --icon-position-top: 10px;
+  --icon-position-right: 10px;
+  --active-scale: 0.8;
+  --active-rotation: -2deg;
+  --active-transition: all 0.1s ease-out;
 }
 
 /* ===== ICON BADGE ===== */
 .bot-or-not-icon {
   position: absolute;
-  top: 8px;
-  right: 8px;
-  width: var(--icon-size);
-  height: var(--icon-size);
+  top: 4px;
+  right: 4px;
+  width: 60px;
+  height: 60px;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -21,33 +26,56 @@
   transition: var(--icon-transition);
   user-select: none;
   pointer-events: all;
+  opacity: 0.65;
+  filter: drop-shadow(-1px -1px 1px rgba(0, 0, 0, 0.8)) 
+          drop-shadow(1px -1px 1px rgba(0, 0, 0, 0.8)) 
+          drop-shadow(-1px 1px 1px rgba(0, 0, 0, 0.8)) 
+          drop-shadow(1px 1px 1px rgba(0, 0, 0, 0.8));
 }
 
 .bot-or-not-icon:hover {
-  transform: scale(1.05);
+  opacity: 1;
+  filter: drop-shadow(-1px -1px 1px rgba(0, 0, 0, 0.8)) 
+          drop-shadow(1px -1px 1px rgba(0, 0, 0, 0.8)) 
+          drop-shadow(-1px 1px 1px rgba(0, 0, 0, 0.8)) 
+          drop-shadow(1px 1px 1px rgba(0, 0, 0, 0.8));
+  animation: scaleBounce 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
 }
 
 .bot-or-not-icon:active {
-  transform: scale(0.95);
-  transition: var(--icon-transition);
+  transform: scale(var(--active-scale)) rotate(var(--active-rotation));
+  transition: var(--active-transition);
+}
+
+@keyframes scaleBounce {
+  0% {
+    transform: scale(1);
+  }
+  60% {
+    transform: scale(1.6);
+  }
+  100% {
+    transform: scale(1.2);
+  }
 }
 
 /* ===== ICON IMAGES ===== */
 .bot-or-not-icon img {
-  width: var(--icon-size);
-  height: var(--icon-size);
+  width: 28px !important;
+  height: 28px !important;
   object-fit: contain;
   pointer-events: none;
+  display: block;
 }
 
 /* ===== CONFIDENCE STATES ===== */
 .bot-or-not-icon.confidence-error {
-  opacity: 0.7;
+  opacity: 0.4;
 }
 
 /* ===== LOADING STATE ===== */
 .bot-or-not-icon[data-loading="true"] {
-  opacity: 0.6;
+  opacity: 0.4;
 }
 
 .bot-or-not-icon[data-loading="true"] img {

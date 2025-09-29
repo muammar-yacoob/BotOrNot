@@ -1,32 +1,22 @@
-// Bot or Not Content Script - Clean Architecture
-// Pure logic only - no hardcoded HTML, CSS, or platform-specific code
-
-// Helper functions for modal
-function getConfidenceColor(confidence) {
-    const colors = {
-        'high': '#e74c3c', 'medium': '#f39c12', 'low': '#3498db',
-        'none': '#27ae60', 'blocked': '#9b59b6', 'error': '#95a5a6'
-    };
-    return colors[confidence] || '#95a5a6';
-}
-
-function getResultText(analysis) {
-    if (analysis.confidence === 'blocked') return '🚫 Analysis Blocked (CORS)';
-    if (analysis.confidence === 'error') return '❌ Analysis Failed';
-    if (analysis.isAI) return `🤖 AI Generated (${analysis.confidence} confidence)`;
-    return '👨‍🎨 Likely Human Created';
-}
-
+// Bot or Not Content Script - Simple Offline Database Approach
 class BotOrNotExtension {
-  constructor() {
+    constructor() {
         this.analyzer = null;
-        this.config = null;
+        this.config = {
+            minImageSize: 100,
+            badgeThreshold: 128,
+            autoScan: true,
+            showIcons: true,
+            debounceDelay: 300,
+            enableCGIDetection: true,
+            enableHeaderParsing: true
+        };
         this.init();
-  }
+    }
 
-  async init() {
+    async init() {
         await this.loadConfig();
-        this.analyzer = new BotOrNotAnalyzer();
+        this.setupComponents();
         this.setupMessageListener();
         this.startAutoScan();
     }
@@ -37,17 +27,11 @@ class BotOrNotExtension {
             this.config = await response.json();
         } catch (error) {
             console.warn('Config not loaded, using defaults:', error);
-            this.config = {
-                minImageSize: 100,
-                badgeThreshold: 512,
-                autoScan: true,
-                showIcons: true,
-                iconSize: '42px',
-                debounceDelay: 300,
-                enableCGIDetection: true,
-                enableHeaderParsing: true
-            };
         }
+    }
+
+    setupComponents() {
+        this.analyzer = new BotOrNotAnalyzer();
     }
 
     setupMessageListener() {
@@ -59,20 +43,11 @@ class BotOrNotExtension {
                     message.mediaType,
                     element
                 );
-                this.showAnalysisModal(analysis, message.srcUrl);
+                await this.storeAnalysis(message.srcUrl, analysis);
+                this.openModal(message.srcUrl);
             }
         });
     }
-
-    findImageElement(srcUrl) {
-        const images = document.querySelectorAll('img');
-        for (const img of images) {
-            if (img.src === srcUrl || img.currentSrc === srcUrl) {
-                return img;
-      }
-    }
-    return null;
-  }
 
     startAutoScan() {
         if (!this.config.autoScan) return;
@@ -82,256 +57,141 @@ class BotOrNotExtension {
             images.forEach(img => this.processImage(img));
         };
 
-        // Initial scan
         scanImages();
 
-        // Observe for new images
         const observer = new MutationObserver(() => {
             this.debounce(() => {
                 scanImages();
-                this.cleanupIcons();
-            }, 300)();
+                this.cleanupBadges();
+            }, this.config.debounceDelay)();
         });
 
         observer.observe(document.body, { childList: true, subtree: true });
     }
 
-    processImage(img) {
-        if (this.shouldSkipImage(img)) return;
+    async processImage(img) {
+        if (!this.config.showIcons) return;
+        if (!img.src) return;
         if (img.dataset.botOrNotProcessed) return;
+
+        const rect = img.getBoundingClientRect();
+        if (rect.width < this.config.badgeThreshold || rect.height < this.config.badgeThreshold) return;
+        if (img.closest('[data-bot-or-not-modal]')) return;
 
         img.dataset.botOrNotProcessed = 'true';
 
-        if (this.config.showIcons) {
-            this.addAnalysisIcon(img);
+        // Check if analysis already exists in database
+        const existingAnalysis = await this.getStoredAnalysis(img.src);
+        if (existingAnalysis) {
+            this.addBadge(img, existingAnalysis);
+        } else {
+            this.addBadge(img, null); // Will show analyzing icon
+            this.analyzeAndStore(img);
         }
     }
 
-     shouldSkipImage(img) {
-         if (!img.src) return true;
-
-         const rect = img.getBoundingClientRect();
-         // Only show badges on images >= badgeThreshold pixels
-         const threshold = this.config?.badgeThreshold || 512;
-         if (rect.width < threshold || rect.height < threshold) {
-             return true;
-         }
-
-         // Skip if in modal
-         if (img.closest('[data-bot-or-not-modal]')) return true;
-
-         return false;
-     }
-
-     addAnalysisIcon(img) {
-         const icon = document.createElement('div');
-         icon.className = 'bot-or-not-icon';
-         icon.dataset.srcUrl = img.src;
-         icon.dataset.mediaType = 'image';
-         icon.dataset.loading = 'true';
-
-         // Add initial analyzing icon
-         const iconSize = this.config?.iconSize || '42px';
-         icon.innerHTML = `<img src="${chrome.runtime.getURL('assets/icons/analyzing.png')}" alt="Analyzing..." style="width: ${iconSize}; height: ${iconSize};" />`;
-
-         // Ensure the image itself is relatively positioned for absolute icon placement
-         // This is crucial for the icon to stay with the image during scroll
-         const computedStyle = window.getComputedStyle(img);
-         if (computedStyle.position === 'static') {
-             img.style.position = 'relative';
-         }
-         
-         // Position relative to the image's parent
-         img.parentElement.appendChild(icon);
-
-         // Start analysis
-         this.analyzeAndUpdateIcon(icon, img);
-     }
-
-
-     async analyzeAndUpdateIcon(icon, img) {
-         try {
-             const analysis = await this.analyzer.analyzeMedia(img.src, 'image', img);
-             this.updateIconState(icon, analysis);
-             this.attachIconClickHandler(icon, analysis, img.src);
-         } catch (error) {
-             this.updateIconState(icon, { confidence: 'error', error: error.message });
-         } finally {
-             icon.dataset.loading = 'false';
-         }
-     }
-
-     updateIconState(icon, analysis) {
-         icon.dataset.confidence = analysis.confidence || 'none';
-         icon.dataset.isAi = analysis.isAI ? 'true' : 'false';
-         icon.dataset.score = analysis.aiScore || '0';
-
-         // Store the complete analysis object for modal use
-         icon._analysisData = analysis;
-
-         // Update visual state via CSS classes
-         icon.className = `bot-or-not-icon confidence-${analysis.confidence}`;
-
-         // Set the appropriate icon image
-         const iconPath = analysis.isAI ? 'assets/icons/bot.png' : 'assets/icons/organic.png';
-         const iconSize = this.config?.iconSize || '42px';
-         icon.innerHTML = `<img src="${chrome.runtime.getURL(iconPath)}" alt="${analysis.isAI ? 'AI' : 'Organic'}" style="width: ${iconSize}; height: ${iconSize};" />`;
-
-         // Set tooltip
-         icon.title = analysis.isAI ?
-             `AI Detected: ${analysis.aiScore || 0}% confidence${analysis.detectedTool ? ` (${analysis.detectedTool})` : ''}` :
-             'Organic Content';
-     }
-
-    attachIconClickHandler(icon, analysis, srcUrl) {
-        const clickHandler = async (e) => {
-            e.stopPropagation();
-            e.preventDefault();
-
-            console.log('=== ICON CLICK HANDLER ===');
-            console.log('Using stored analysis data:', icon._analysisData);
-
-            // Use stored analysis data from icon
-            const analysisData = icon._analysisData || analysis;
-
-            try {
-                await this.loadModalTemplate();
-                const modal = await this.createModal(srcUrl);
-                document.body.appendChild(modal);
-                this.setupModalEventListeners(modal);
-
-                // Directly populate modal data
-                if (window.BotOrNotModal && analysisData) {
-                    console.log('Populating modal with analysis:', analysisData);
-                    window.BotOrNotModal.currentAnalysis = analysisData;
-                    window.BotOrNotModal.currentSrcUrl = srcUrl;
-                    window.BotOrNotModal.populateAll();
-                } else {
-                    console.error('Modal or analysis data not available');
-                }
-
-                // Show modal
-                requestAnimationFrame(() => {
-                    modal.classList.add('show');
-                });
-            } catch (error) {
-                console.error('Failed to show modal:', error);
-            }
-        };
-
-        icon.addEventListener('click', clickHandler);
-
-        // Store cleanup function
-        icon._clickHandler = clickHandler;
-        icon._cleanup = () => {
-            if (icon._updatePosition) {
-                window.removeEventListener('scroll', icon._updatePosition);
-                window.removeEventListener('resize', icon._updatePosition);
-            }
-            icon.removeEventListener('click', clickHandler);
-        };
+    async analyzeAndStore(img) {
+        try {
+            const analysis = await this.analyzer.analyzeMedia(img.src, 'image', img);
+            await this.storeAnalysis(img.src, analysis);
+            this.updateBadgeFromStorage(img.src);
+        } catch (error) {
+            const errorAnalysis = { confidence: 'error', error: error.message, isAI: false };
+            await this.storeAnalysis(img.src, errorAnalysis);
+            this.updateBadgeFromStorage(img.src);
+        }
     }
 
-    // Clean up icons that are no longer visible or valid
-    cleanupIcons() {
-        const icons = document.querySelectorAll('.bot-or-not-icon');
-        icons.forEach(icon => {
-            const srcUrl = icon.dataset.srcUrl;
-            const img = this.findImageElement(srcUrl);
+    addBadge(img, analysis) {
+        const badge = document.createElement('div');
+        badge.className = 'bot-or-not-icon';
+        badge.dataset.srcUrl = img.src;
 
-            // Remove icon if the source image is no longer in the DOM or not visible
-            if (!img || !document.body.contains(img) || img.offsetParent === null) {
-                if (icon._cleanup) {
-                    icon._cleanup();
-                }
-                icon.remove();
+        // Position badge
+        const computedStyle = window.getComputedStyle(img);
+        if (computedStyle.position === 'static') {
+            img.style.position = 'relative';
+        }
+        img.parentElement.appendChild(badge);
+
+        if (analysis) {
+            this.updateBadgeDisplay(badge, analysis);
+        } else {
+            badge.dataset.loading = 'true';
+            badge.innerHTML = `<img src="${chrome.runtime.getURL('assets/icons/analyzing.png')}" alt="Analyzing..." style="width: 28px; height: 28px;" />`;
+        }
+
+        this.attachClickHandler(badge, img.src);
+    }
+
+    updateBadgeDisplay(badge, analysis) {
+        badge.dataset.loading = 'false';
+        badge.dataset.confidence = analysis.confidence || 'none';
+        badge.dataset.isAi = analysis.isAI ? 'true' : 'false';
+        badge.className = `bot-or-not-icon confidence-${analysis.confidence}`;
+
+        let iconPath, altText;
+        if (analysis.confidence === 'error') {
+            iconPath = 'assets/icons/icon32.png';
+            altText = 'Error';
+            badge.title = `Analysis Error: ${analysis.error || 'Unknown error'}`;
+        } else {
+            iconPath = analysis.isAI ? 'assets/icons/bot.png' : 'assets/icons/organic.png';
+            altText = analysis.isAI ? 'AI' : 'Organic';
+            badge.title = analysis.isAI ?
+                `AI Detected: ${analysis.aiScore || 0}% confidence${analysis.detectedTool ? ` (${analysis.detectedTool})` : ''}` :
+                'Organic Content';
+        }
+        badge.innerHTML = `<img src="${chrome.runtime.getURL(iconPath)}" alt="${altText}" style="width: 28px; height: 28px;" />`;
+    }
+
+    async updateBadgeFromStorage(srcUrl) {
+        const analysis = await this.getStoredAnalysis(srcUrl);
+        if (analysis) {
+            const badge = document.querySelector(`[data-src-url="${srcUrl}"]`);
+            if (badge) {
+                this.updateBadgeDisplay(badge, analysis);
             }
+        }
+    }
+
+    attachClickHandler(badge, srcUrl) {
+        const clickHandler = (e) => {
+            e.stopPropagation();
+            e.preventDefault();
+            this.openModal(srcUrl);
+        };
+        badge.addEventListener('click', clickHandler);
+    }
+
+    async openModal(srcUrl) {
+        // Load modal template
+        const response = await fetch(chrome.runtime.getURL('src/html/modal.html'));
+        const modalTemplate = await response.text();
+
+        // Create modal
+        const modal = document.createElement('div');
+        modal.className = 'modal';
+        modal.dataset.botOrNotModal = 'true';
+        modal.dataset.srcUrl = srcUrl;
+        modal.innerHTML = modalTemplate;
+
+        // Load modal styles
+        this.loadModalStyles();
+
+        // Add to page
+        document.body.appendChild(modal);
+
+        // Setup event listeners
+        this.setupModalEventListeners(modal);
+
+        // Trigger animation
+        requestAnimationFrame(() => {
+            modal.classList.add('show');
         });
     }
 
-    async showAnalysisModal(analysis, srcUrl) {
-        try {
-            console.log('=== showAnalysisModal called ===');
-            console.log('Analysis data received:', analysis);
-            console.log('Source URL:', srcUrl);
-
-            await this.loadModalTemplate();
-            const modal = await this.createModal(srcUrl);
-            document.body.appendChild(modal);
-            this.setupModalEventListeners(modal);
-
-            // Populate modal data directly instead of relying on modal.html script
-            if (window.BotOrNotModal) {
-                console.log('Setting analysis data on BotOrNotModal...');
-                window.BotOrNotModal.currentAnalysis = analysis;
-                window.BotOrNotModal.currentSrcUrl = srcUrl;
-                console.log('Data set, calling populateAll...');
-                console.log('BotOrNotModal.currentAnalysis now:', window.BotOrNotModal.currentAnalysis);
-                window.BotOrNotModal.populateAll();
-                console.log('populateAll completed');
-            } else {
-                console.error('BotOrNotModal not available!');
-            }
-
-            // Trigger animation after DOM insertion
-            requestAnimationFrame(() => {
-                modal.classList.add('show');
-            });
-        } catch (error) {
-            console.error('Failed to show modal:', error);
-        }
-    }
-
-    async loadModalTemplate() {
-        if (window.BotOrNotModalTemplate && window.BotOrNotModal) return;
-
-        try {
-            // Load modal.js first if not already loaded
-            if (!window.BotOrNotModal) {
-                console.log('Loading modal.js...');
-                const script = document.createElement('script');
-                script.src = chrome.runtime.getURL('src/js/modal.js');
-                document.head.appendChild(script);
-                
-                // Wait for script to load
-                await new Promise((resolve, reject) => {
-                    script.onload = resolve;
-                    script.onerror = reject;
-                    setTimeout(() => reject(new Error('Modal script load timeout')), 2000);
-                });
-                console.log('Modal.js loaded successfully');
-            }
-
-            // Load modal template
-            if (!window.BotOrNotModalTemplate) {
-                console.log('Loading modal template...');
-                const response = await fetch(chrome.runtime.getURL('src/html/modal.html'));
-                window.BotOrNotModalTemplate = await response.text();
-                console.log('Modal template loaded successfully');
-            }
-        } catch (error) {
-            console.error('Failed to load modal resources:', error);
-            throw new Error('Modal template not available: ' + error.message);
-        }
-    }
-
-    async createModal(srcUrl) {
-        const modal = document.createElement('div');
-        modal.dataset.botOrNotModal = 'true';
-        modal.dataset.srcUrl = srcUrl;
-        modal.className = 'modal';
-
-        // Load modal styling
-        await this.loadModalStyles();
-
-        // Set template content
-        modal.innerHTML = window.BotOrNotModalTemplate;
-
-        return modal;
-    }
-
-
-    async loadModalStyles() {
+    loadModalStyles() {
         if (document.querySelector('link[data-bot-or-not-modal-styles]')) return;
 
         const link = document.createElement('link');
@@ -348,17 +208,15 @@ class BotOrNotExtension {
                 if (modal.parentNode) {
                     modal.remove();
                 }
-            }, 200); // Match CSS transition duration
+            }, 200);
         };
 
-        // Close modal on background click
         modal.addEventListener('click', (e) => {
             if (e.target === modal) {
                 closeModal();
             }
         });
 
-        // Close modal on escape key
         const handleEscape = (e) => {
             if (e.key === 'Escape') {
                 closeModal();
@@ -367,19 +225,55 @@ class BotOrNotExtension {
         };
         document.addEventListener('keydown', handleEscape);
 
-        // Store close function on modal for external access
-        modal._closeModal = closeModal;
-
-        // Make close function globally accessible for modal HTML
+        // Make close function globally accessible
         window.BotOrNotContent = window.BotOrNotContent || {};
         window.BotOrNotContent.closeModal = closeModal;
-        window.BotOrNotContent.copyAnalysisResults = async (analysis) => {
-            const results = this.formatAnalysisForCopy(analysis);
-            await navigator.clipboard.writeText(results);
-        };
     }
 
-    // Utility methods
+    // Offline Database Functions
+    getStorageKey(srcUrl) {
+        const pageUrl = window.location.href.split('#')[0]; // Remove hash
+        return `bot-or-not-analysis-${pageUrl}-${srcUrl}`;
+    }
+
+    async storeAnalysis(srcUrl, analysis) {
+        const key = this.getStorageKey(srcUrl);
+        const data = {
+            analysis,
+            timestamp: Date.now(),
+            pageUrl: window.location.href,
+            srcUrl
+        };
+        await chrome.storage.local.set({ [key]: data });
+    }
+
+    async getStoredAnalysis(srcUrl) {
+        const key = this.getStorageKey(srcUrl);
+        const result = await chrome.storage.local.get(key);
+        return result[key]?.analysis || null;
+    }
+
+    cleanupBadges() {
+        const badges = document.querySelectorAll('.bot-or-not-icon');
+        badges.forEach(badge => {
+            const srcUrl = badge.dataset.srcUrl;
+            const img = this.findImageElement(srcUrl);
+            if (!img || !document.body.contains(img) || img.offsetParent === null) {
+                badge.remove();
+            }
+        });
+    }
+
+    findImageElement(srcUrl) {
+        const images = document.querySelectorAll('img');
+        for (const img of images) {
+            if (img.src === srcUrl || img.currentSrc === srcUrl) {
+                return img;
+            }
+        }
+        return null;
+    }
+
     debounce(func, wait) {
         let timeout;
         return function executedFunction(...args) {
@@ -390,42 +284,6 @@ class BotOrNotExtension {
             clearTimeout(timeout);
             timeout = setTimeout(later, wait);
         };
-    }
-
-    formatAnalysisForCopy(analysis) {
-        const lines = [];
-        lines.push('🔎 Bot or Not? Analysis Results');
-        lines.push('=====================================');
-
-        if (analysis.isAI) {
-            lines.push(`🤖 AI Generated (${analysis.confidence} confidence)`);
-            if (analysis.detectedTool) {
-                lines.push(`🛠️ Tool: ${analysis.detectedTool}`);
-            }
-        } else {
-            lines.push('👨‍🎨 Likely Human Created');
-        }
-
-        lines.push(`📊 AI Score: ${analysis.aiScore || 0}/${analysis.maxScore || 100}`);
-        lines.push(`🔍 Method: ${analysis.method}`);
-
-        if (analysis.signatures?.length) {
-            lines.push(`\n🔍 Signatures Found (${analysis.signatures.length}):`);
-            analysis.signatures.forEach(sig => {
-                lines.push(`  • ${sig.tool}: ${sig.details}`);
-            });
-        }
-
-        if (analysis.cgiDetection) {
-            const cgi = analysis.cgiDetection;
-            const status = cgi.isCGI ? 'CGI' : cgi.isEdited ? 'Edited' : 'Organic';
-            lines.push(`\n🎨 Image Type: ${status}`);
-            if (cgi.metrics?.uniqueColors) {
-                lines.push(`🌈 Colors Detected: ${cgi.metrics.uniqueColors}`);
-            }
-        }
-
-        return lines.join('\n');
     }
 }
 

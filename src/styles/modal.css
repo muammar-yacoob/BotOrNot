@@ -55,7 +55,7 @@
   border: 1px solid var(--modal-border);
   border-radius: var(--modal-radius);
   box-shadow: var(--modal-shadow);
-  max-width: 450px;
+  max-width: 400px;
   width: 90%;
   max-height: 85vh;
   overflow: hidden;
@@ -74,7 +74,7 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 16px 20px;
+  padding: 12px 16px;
   border-bottom: 1px solid var(--modal-border);
   background: var(--primary);
   color: white;
@@ -89,13 +89,13 @@
 }
 
 .modal-body {
-  padding: 20px;
+  padding: 16px;
   overflow-y: auto;
   flex: 1;
 }
 
 .modal-footer {
-  padding: 16px 20px;
+  padding: 12px 16px;
   border-top: 1px solid var(--modal-border);
   text-align: center;
   background: var(--surface);
@@ -191,17 +191,18 @@
 details {
   border: 1px solid var(--border);
   border-radius: 6px;
-  margin: 12px 0;
+  margin: 8px 0;
   overflow: hidden;
 }
 
 summary {
-  padding: 12px 16px;
+  padding: 10px 14px;
   background: var(--surface);
   cursor: pointer;
   user-select: none;
   font-weight: 500;
   color: var(--text-secondary);
+  font-size: 13px;
   border-bottom: 1px solid var(--border);
   transition: background var(--transition);
 }
@@ -215,13 +216,36 @@ details[open] summary {
 }
 
 details .content {
-  padding: 16px;
+  padding: 12px 14px;
   background: var(--modal-bg);
 }
 
 details .content.scrollable {
-  max-height: 200px;
+  max-height: 150px;
   overflow-y: auto;
+}
+
+/* ===== ALWAYS VISIBLE SECTIONS ===== */
+.section {
+  margin: 6px 0;
+}
+
+.section-header {
+  padding: 6px 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  font-size: 12px;
+  margin-bottom: 2px;
+}
+
+.section-content {
+  padding: 6px 10px;
+  background: var(--modal-bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
 }
 
 /* ===== LIST COMPONENTS ===== */

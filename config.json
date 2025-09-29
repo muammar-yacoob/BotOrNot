@@ -3,8 +3,6 @@
   "badgeThreshold": 128,
   "autoScan": true,
   "showIcons": true,
-  "iconSize": "42px",
-  "modalWidth": "600px",
   "debounceDelay": 300,
   "enableCGIDetection": true,
   "enableHeaderParsing": true

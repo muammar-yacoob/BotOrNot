@@ -106,7 +106,15 @@ class SimpleSignatureDb {
 
         const lowerText = text.toLowerCase();
         for (const signature of this.signatures) {
-            if (lowerText.includes(signature.toLowerCase())) {
+            const lowerSig = signature.toLowerCase();
+
+            // Skip overly short signatures that cause false positives in binary data
+            if (lowerSig.length <= 2) {
+                continue;
+            }
+
+            // For longer signatures, use simple includes check
+            if (lowerText.includes(lowerSig)) {
                 return {
                     tool: this.formatToolName(signature),
                     signature: signature,

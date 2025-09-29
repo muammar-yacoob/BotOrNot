@@ -13,26 +13,28 @@
     </div>
 
     <!-- Signatures Section -->
-    <details id="signatures-details">
-      <summary>🔍 Found Signatures (<span id="signature-count">0</span>)</summary>
-      <div class="content" id="signatures-content">
+    <div class="section">
+      <div class="section-header">🔍 Found Signatures (<span id="signature-count">0</span>)</div>
+      <div class="section-content">
         <div class="list" id="signatures-list"></div>
       </div>
-    </details>
+    </div>
 
     <!-- Summary Section -->
-    <div class="card">
-      <h4 class="text-primary">📊 Analysis Summary</h4>
-      <div class="metrics" id="summary-metrics"></div>
+    <div class="section">
+      <div class="section-header">📊 Analysis Summary</div>
+      <div class="section-content">
+        <div class="metrics" id="summary-metrics"></div>
+      </div>
     </div>
 
     <!-- Filters Section -->
-    <details id="filters-details">
-      <summary>🎨 Filter Analysis</summary>
-      <div class="content" id="filters-content">
+    <div class="section">
+      <div class="section-header">🎨 Filter Analysis</div>
+      <div class="section-content">
         <div class="list" id="filters-list"></div>
       </div>
-    </details>
+    </div>
     
     <!-- Image Preview -->
     <div class="image-preview">
@@ -54,48 +56,231 @@
 </div>
 
 <script>
-// Forward control - modal.html calls modal.js to get data
-function initializeModal() {
-    console.log('Modal initialization started');
-    
+// Forward control - modal.html fetches data from offline database
+async function initializeModal() {
+    console.log('Modal initialization started with forward control');
+
     // Get the source URL from the modal data attribute
     const modal = document.querySelector('[data-bot-or-not-modal]');
     const srcUrl = modal?.dataset.srcUrl;
-    
+
     console.log('Modal found:', modal);
     console.log('Source URL:', srcUrl);
-    
+
     if (!srcUrl) {
         console.error('No source URL found for modal');
         document.getElementById('result-text').textContent = '❌ No source URL';
         return;
     }
-    
+
     // Show loading state
-    document.getElementById('result-text').textContent = '🔄 Analyzing...';
-    console.log('Loading state set');
-    
-    // Check if BotOrNotModal is available
-    if (!window.BotOrNotModal) {
-        console.error('BotOrNotModal not available');
-        document.getElementById('result-text').textContent = '❌ Modal controller not loaded';
-        return;
+    document.getElementById('result-text').textContent = '🔄 Loading analysis...';
+
+    try {
+        // Fetch analysis data from offline database
+        console.log('🚀 Starting analysis data fetch for:', srcUrl);
+        const analysisData = await getStoredAnalysis(srcUrl);
+
+        if (!analysisData) {
+            console.warn('❌ No analysis data found in storage');
+            document.getElementById('result-text').textContent = '❌ No analysis data found';
+            
+            // Debug: List all keys in storage
+            const allData = await chrome.storage.local.get();
+            console.log('📋 All keys in storage:', Object.keys(allData));
+            return;
+        }
+
+        console.log('✅ Analysis data found, populating modal...');
+        // Populate modal with analysis data
+        populateModalData(analysisData, srcUrl);
+
+        console.log('🎉 Modal populated successfully');
+
+    } catch (error) {
+        console.error('💥 Modal initialization failed:', error);
+        document.getElementById('result-text').textContent = '❌ Analysis Failed: ' + error.message;
     }
-    
-    console.log('BotOrNotModal available, starting analysis...');
-    
-    // Call modal.js to perform analysis and populate data
-    window.BotOrNotModal.initialize(srcUrl, 'image')
-        .then(() => {
-            console.log('Modal analysis completed successfully');
-        })
-        .catch(error => {
-            console.error('Modal initialization failed:', error);
-            document.getElementById('result-text').textContent = '❌ Analysis Failed: ' + error.message;
-        });
 }
 
-// Modal initialization is now handled by content.js directly
-// This script is disabled to prevent conflicts
-console.log('Modal HTML loaded - initialization handled by content.js');
+// Get storage key using same pattern as content.js
+function getStorageKey(srcUrl) {
+    const pageUrl = window.location.href.split('#')[0]; // Remove hash
+    const key = `bot-or-not-analysis-${pageUrl}-${srcUrl}`;
+    console.log('🔑 Generated storage key:', key);
+    console.log('   - Page URL:', pageUrl);
+    console.log('   - Source URL:', srcUrl);
+    return key;
+}
+
+// Fetch stored analysis from chrome.storage.local
+async function getStoredAnalysis(srcUrl) {
+    const key = getStorageKey(srcUrl);
+    console.log('🔍 Fetching analysis with key:', key);
+    
+    const result = await chrome.storage.local.get(key);
+    console.log('📦 Chrome storage result:', result);
+    
+    const analysis = result[key]?.analysis || null;
+    console.log('📊 Extracted analysis:', analysis);
+    
+    return analysis;
+}
+
+// Populate modal sections with analysis data
+function populateModalData(analysis, srcUrl) {
+    console.log('Populating modal with analysis:', analysis);
+
+    // 1. Main Result Card
+    const resultText = document.getElementById('result-text');
+    const toolText = document.getElementById('tool-text');
+    const toolName = document.getElementById('tool-name');
+    const methodText = document.getElementById('method-text');
+
+    if (analysis.confidence === 'error') {
+        resultText.textContent = '❌ Analysis Error';
+        resultText.className = 'text-error';
+        methodText.textContent = 'Error occurred during analysis';
+        if (analysis.error) {
+            document.getElementById('details-content').innerHTML = `<ul><li>Error: ${analysis.error}</li></ul>`;
+        }
+    } else if (analysis.isAI) {
+        resultText.textContent = `🤖 AI Generated (${analysis.confidence} confidence)`;
+        resultText.className = 'text-danger';
+        if (analysis.detectedTool) {
+            toolText.style.display = 'block';
+            toolName.textContent = analysis.detectedTool;
+        }
+    } else {
+        resultText.textContent = '🌱 Organic Content';
+        resultText.className = 'text-success';
+    }
+
+    methodText.textContent = analysis.method || 'Unknown';
+
+    // 2. Signatures Section
+    const signatureCount = document.getElementById('signature-count');
+    const signaturesList = document.getElementById('signatures-list');
+
+    const signatures = analysis.signatures || [];
+    signatureCount.textContent = signatures.length;
+
+    if (signatures.length > 0) {
+        signaturesList.innerHTML = signatures.map(sig =>
+            `<div class="list-item">
+                <div class="list-item-title">${sig.signature || 'Unknown'}</div>
+                <div class="list-item-subtitle">${sig.tool || 'Unknown Tool'}</div>
+            </div>`
+        ).join('');
+    } else {
+        signaturesList.innerHTML = '<div class="list-item"><div class="list-item-title">No AI signatures detected</div></div>';
+    }
+
+    // 3. Summary Section
+    const summaryMetrics = document.getElementById('summary-metrics');
+    const metricsHtml = [
+        `<div class="metric"><span class="metric-label">Confidence:</span> <span class="metric-value">${analysis.confidence || 'none'}</span></div>`,
+        `<div class="metric"><span class="metric-label">AI Score:</span> <span class="metric-value">${analysis.aiScore || 0}/${analysis.maxScore || 100}</span></div>`,
+        `<div class="metric"><span class="metric-label">Detection Method:</span> <span class="metric-value">${analysis.method || 'unknown'}</span></div>`
+    ];
+
+    if (analysis.cgiDetection && !analysis.cgiDetection.corsBlocked) {
+        metricsHtml.push(`<div class="metric"><span class="metric-label">Unique Colors:</span> <span class="metric-value">${analysis.cgiDetection.metrics?.uniqueColors || 0}</span></div>`);
+        metricsHtml.push(`<div class="metric"><span class="metric-label">Gradient Ratio:</span> <span class="metric-value">${(analysis.cgiDetection.metrics?.gradientRatio || 0).toFixed(2)}</span></div>`);
+    }
+
+    summaryMetrics.innerHTML = metricsHtml.join('');
+
+    // 4. Filters Section
+    const filtersList = document.getElementById('filters-list');
+    const filters = analysis.cgiDetection?.filtersDetected || [];
+
+    if (filters.length > 0) {
+        filtersList.innerHTML = filters.map(filter =>
+            `<div class="list-item"><div class="list-item-title">${filter}</div></div>`
+        ).join('');
+    } else {
+        filtersList.innerHTML = '<div class="list-item"><div class="list-item-title">No photo filters detected</div></div>';
+    }
+
+    // 5. Image Preview
+    const analyzedImage = document.getElementById('analyzed-image');
+    analyzedImage.src = srcUrl;
+    analyzedImage.onerror = () => {
+        analyzedImage.style.display = 'none';
+    };
+
+    // 6. Technical Details
+    const detailsList = document.getElementById('details-list');
+    const details = analysis.details || [];
+
+    const detailsHtml = details.map(detail => `<li>${detail}</li>`).join('');
+
+    // Add file info
+    let fileInfo = `<li>Source URL: ${srcUrl}</li>`;
+    if (analysis.fileInfo?.type) {
+        fileInfo += `<li>Media Type: ${analysis.fileInfo.type}</li>`;
+    }
+
+    detailsList.innerHTML = fileInfo + detailsHtml;
+
+    // 7. Setup Copy Button
+    const copyBtn = document.getElementById('copy-btn');
+    copyBtn.onclick = () => {
+        const summaryText = createSummaryText(analysis, srcUrl);
+        navigator.clipboard.writeText(summaryText).then(() => {
+            copyBtn.textContent = 'Copied!';
+            setTimeout(() => {
+                copyBtn.textContent = 'Copy & Close';
+            }, 1000);
+        });
+    };
+
+    // 8. Setup Close Button
+    const closeBtn = document.getElementById('close-btn');
+    closeBtn.onclick = () => {
+        if (window.BotOrNotContent?.closeModal) {
+            window.BotOrNotContent.closeModal();
+        }
+    };
+}
+
+// Create summary text for copying
+function createSummaryText(analysis, srcUrl) {
+    let summary = `Bot or Not Analysis\n`;
+    summary += `==================\n`;
+    summary += `Image: ${srcUrl}\n`;
+    summary += `Result: ${analysis.isAI ? 'AI Generated' : 'Organic Content'}\n`;
+    summary += `Confidence: ${analysis.confidence}\n`;
+    summary += `Method: ${analysis.method}\n`;
+
+    if (analysis.detectedTool) {
+        summary += `Tool: ${analysis.detectedTool}\n`;
+    }
+
+    if (analysis.signatures?.length > 0) {
+        summary += `\nSignatures Found:\n`;
+        analysis.signatures.forEach(sig => {
+            summary += `- ${sig.signature} (${sig.tool})\n`;
+        });
+    }
+
+    if (analysis.details?.length > 0) {
+        summary += `\nDetails:\n`;
+        analysis.details.forEach(detail => {
+            summary += `- ${detail}\n`;
+        });
+    }
+
+    return summary;
+}
+
+// Auto-initialize when DOM is ready
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initializeModal);
+} else {
+    initializeModal();
+}
+
+console.log('Modal HTML loaded with forward control database fetching');
 </script>

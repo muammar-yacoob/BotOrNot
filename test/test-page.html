@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bot or Not Test Page</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .image-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
+        .image-container { position: relative; border: 1px solid #ccc; padding: 10px; border-radius: 8px; }
+        .image-container img { width: 100%; height: auto; max-width: 300px; position: relative; }
+        .image-label { font-weight: bold; margin-bottom: 10px; }
+        .expected-result { color: #666; font-size: 0.9em; margin-top: 5px; }
+    </style>
+</head>
+<body>
+    <h1>Bot or Not Extension Test Page</h1>
+    <p>This page contains various test images to verify the extension's detection capabilities.</p>
+
+    <div class="image-grid">
+        <div class="image-container">
+            <div class="image-label">turtle.jpeg</div>
+            <img src="imgs/turtle.jpeg" alt="Turtle" />
+            <div class="expected-result">Expected: Organic</div>
+        </div>
+
+        <div class="image-container">
+            <div class="image-label">nature.jpeg</div>
+            <img src="imgs/nature.jpeg" alt="Nature" />
+            <div class="expected-result">Expected: Organic</div>
+        </div>
+
+        <div class="image-container">
+            <div class="image-label">aiGirl.jpeg</div>
+            <img src="imgs/aiGirl.jpeg" alt="AI Girl" />
+            <div class="expected-result">Expected: AI (low color count)</div>
+        </div>
+
+        <div class="image-container">
+            <div class="image-label">fatCat.jpg</div>
+            <img src="imgs/fatCat.jpg" alt="Fat Cat" />
+            <div class="expected-result">Expected: CGI (low color count)</div>
+        </div>
+
+        <div class="image-container">
+            <div class="image-label">futurama.jpg</div>
+            <img src="imgs/futurama.jpg" alt="Futurama" />
+            <div class="expected-result">Expected: CGI (animation style)</div>
+        </div>
+
+        <div class="image-container">
+            <div class="image-label">ppg.jpg</div>
+            <img src="imgs/ppg.jpg" alt="PowerPuff Girls" />
+            <div class="expected-result">Expected: CGI (animation style)</div>
+        </div>
+    </div>
+</body>
+</html>
