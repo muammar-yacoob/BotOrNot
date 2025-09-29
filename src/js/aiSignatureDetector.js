@@ -36,7 +36,19 @@ class AISignatureDetector {
             }
 
             // Parse file headers for AI signatures
-            const headerAnalysis = await this.headerParser.parseFile(fileContent, srcUrl);
+            let arrayBuffer;
+            if (fileContent instanceof ArrayBuffer) {
+                arrayBuffer = fileContent;
+            } else if (Array.isArray(fileContent)) {
+                arrayBuffer = new Uint8Array(fileContent).buffer;
+            } else if (fileContent && fileContent.byteLength !== undefined && fileContent.buffer) {
+                arrayBuffer = fileContent.buffer;
+            } else {
+                // Unknown format; try to coerce
+                arrayBuffer = new Uint8Array(fileContent || []).buffer;
+            }
+
+            const headerAnalysis = await this.headerParser.parseFile(arrayBuffer, srcUrl);
 
             return {
                 hasAISignatures: headerAnalysis.signatures?.length > 0,

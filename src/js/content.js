@@ -125,7 +125,12 @@ class BotOrNotExtension {
             this.updateBadgeDisplay(badge, analysis);
         } else {
             badge.dataset.loading = 'true';
-            badge.innerHTML = `<img src="${chrome.runtime.getURL('assets/icons/analyzing.png')}" alt="Analyzing..." style="width: 28px; height: 28px;" />`;
+            if (chrome?.runtime?.id) {
+                badge.innerHTML = `<img src="${chrome.runtime.getURL('assets/icons/analyzing.png')}" alt="Analyzing..." style="width: 28px; height: 28px;" />`;
+            } else {
+                badge.textContent = '…';
+                badge.title = 'Analyzing';
+            }
         }
 
         this.attachClickHandler(badge, img.src);
@@ -149,7 +154,11 @@ class BotOrNotExtension {
                 `AI Detected: ${analysis.aiScore || 0}% confidence${analysis.detectedTool ? ` (${analysis.detectedTool})` : ''}` :
                 'Organic Content';
         }
-        badge.innerHTML = `<img src="${chrome.runtime.getURL(iconPath)}" alt="${altText}" style="width: 28px; height: 28px;" />`;
+        if (chrome?.runtime?.id) {
+            badge.innerHTML = `<img src="${chrome.runtime.getURL(iconPath)}" alt="${altText}" style="width: 28px; height: 28px;" />`;
+        } else {
+            badge.textContent = analysis.isAI ? 'AI' : 'ORG';
+        }
     }
 
     async updateBadgeFromStorage(srcUrl) {
@@ -192,7 +201,28 @@ class BotOrNotExtension {
         try {
             // Check if extension context is still valid
             if (!chrome.runtime?.id) {
-                console.warn('Extension context invalidated, cannot open modal');
+                // Minimal inline modal fallback
+                const modal = document.createElement('div');
+                modal.className = 'modal';
+                modal.dataset.botOrNotModal = 'true';
+                modal.dataset.srcUrl = srcUrl;
+                const analysis = await this.getStoredAnalysis(srcUrl);
+                const title = analysis?.isAI ? 'AI Detected' : 'Organic Content';
+                const tool = analysis?.detectedTool ? ` (${analysis.detectedTool})` : '';
+                modal.innerHTML = `
+<div style="position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:999999;">
+  <div style="background:#111;color:#eee;padding:16px 20px;border-radius:10px;min-width:280px;max-width:90vw;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+      <strong>${title}${tool}</strong>
+      <button data-close style="background:#333;color:#eee;border:0;border-radius:6px;padding:4px 8px;cursor:pointer;">Close</button>
+    </div>
+    <div style="font-size:12px;line-height:1.4;white-space:pre-wrap;word-break:break-word;">
+      ${analysis ? (analysis.details || []).join('\n') : 'No stored details found.'}
+    </div>
+  </div>
+</div>`;
+                document.body.appendChild(modal);
+                this.setupModalEventListeners(modal);
                 return;
             }
 
@@ -236,7 +266,7 @@ class BotOrNotExtension {
 
         const link = document.createElement('link');
         link.rel = 'stylesheet';
-        link.href = chrome.runtime.getURL('src/styles/icon.css');
+        link.href = chrome?.runtime?.id ? chrome.runtime.getURL('src/styles/icon.css') : 'src/styles/icon.css';
         link.dataset.botOrNotIconStyles = 'true';
         document.head.appendChild(link);
     }
@@ -246,7 +276,7 @@ class BotOrNotExtension {
 
         const link = document.createElement('link');
         link.rel = 'stylesheet';
-        link.href = chrome.runtime.getURL('src/styles/modal.css');
+        link.href = chrome?.runtime?.id ? chrome.runtime.getURL('src/styles/modal.css') : 'src/styles/modal.css';
         link.dataset.botOrNotModalStyles = 'true';
         document.head.appendChild(link);
     }
@@ -290,7 +320,17 @@ class BotOrNotExtension {
         try {
             // Check if extension context is valid
             if (!chrome.runtime?.id) {
-                console.warn('Extension context invalidated, cannot store analysis');
+                // Fallback to localStorage
+                const key = this.getStorageKey(srcUrl);
+                const data = {
+                    analysis,
+                    timestamp: Date.now(),
+                    pageUrl: window.location.href,
+                    srcUrl
+                };
+                try {
+                    localStorage.setItem(key, JSON.stringify(data));
+                } catch (e) {}
                 return;
             }
             
@@ -313,8 +353,16 @@ class BotOrNotExtension {
         try {
             // Check if extension context is valid
             if (!chrome.runtime?.id) {
-                console.warn('Extension context invalidated, cannot get stored analysis');
-                return null;
+                // Fallback to localStorage
+                try {
+                    const key = this.getStorageKey(srcUrl);
+                    const raw = localStorage.getItem(key);
+                    if (!raw) return null;
+                    const parsed = JSON.parse(raw);
+                    return parsed?.analysis || null;
+                } catch (e) {
+                    return null;
+                }
             }
             
             const key = this.getStorageKey(srcUrl);
