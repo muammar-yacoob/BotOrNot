@@ -3,7 +3,7 @@
 /* ===== CSS VARIABLES ===== */
 :root {
   --icon-size: 28px;
-  --icon-transition: all 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+  --icon-transition: all 0.3s linear;
   --icon-position-top: 10px;
   --icon-position-right: 10px;
   --active-scale: 0.8;
@@ -39,7 +39,7 @@
           drop-shadow(1px -1px 1px rgba(0, 0, 0, 0.8)) 
           drop-shadow(-1px 1px 1px rgba(0, 0, 0, 0.8)) 
           drop-shadow(1px 1px 1px rgba(0, 0, 0, 0.8));
-  animation: scaleBounce 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+  animation: scaleBounce 0.2s linear;
 }
 
 .bot-or-not-icon:active {

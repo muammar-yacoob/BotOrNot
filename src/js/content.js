@@ -1,6 +1,6 @@
 // Bot or Not Content Script - Simple Offline Database Approach
 class BotOrNotExtension {
-    constructor() {
+  constructor() {
         this.analyzer = null;
         this.config = {
             minImageSize: 100,
@@ -12,10 +12,11 @@ class BotOrNotExtension {
             enableHeaderParsing: true
         };
         this.init();
-    }
+  }
 
-    async init() {
+  async init() {
         await this.loadConfig();
+        this.loadIconStyles();
         this.setupComponents();
         this.setupMessageListener();
         this.startAutoScan();
@@ -23,6 +24,12 @@ class BotOrNotExtension {
 
     async loadConfig() {
         try {
+            // Check if extension context is valid
+            if (!chrome.runtime?.id) {
+                console.warn('Extension context invalidated during config load');
+                return;
+            }
+            
             const response = await fetch(chrome.runtime.getURL('config.json'));
             this.config = await response.json();
         } catch (error) {
@@ -148,7 +155,7 @@ class BotOrNotExtension {
     async updateBadgeFromStorage(srcUrl) {
         const analysis = await this.getStoredAnalysis(srcUrl);
         if (analysis) {
-            const badge = document.querySelector(`[data-src-url="${srcUrl}"]`);
+            const badge = document.querySelector(`.bot-or-not-icon[data-src-url="${srcUrl}"]`);
             if (badge) {
                 this.updateBadgeDisplay(badge, analysis);
             }
@@ -156,39 +163,82 @@ class BotOrNotExtension {
     }
 
     attachClickHandler(badge, srcUrl) {
-        const clickHandler = (e) => {
+        const clickHandler = async (e) => {
             e.stopPropagation();
             e.preventDefault();
+            
+            // Get and log the stored analysis data for this image
+            const storedAnalysis = await this.getStoredAnalysis(srcUrl);
+            console.log('=== BADGE CLICKED ===');
+            console.log('Image:', srcUrl.substring(srcUrl.lastIndexOf('/') + 1));
+            console.log('Stored Data:', storedAnalysis ? {
+                result: storedAnalysis.isAI ? `AI (${storedAnalysis.detectedTool || 'Unknown tool'})` : 'Organic',
+                confidence: storedAnalysis.confidence,
+                method: storedAnalysis.method,
+                aiScore: storedAnalysis.aiScore,
+                signatures: storedAnalysis.signatures?.length || 0,
+                colors: storedAnalysis.cgiDetection?.metrics?.uniqueColors || 'N/A',
+                gradientRatio: storedAnalysis.cgiDetection?.metrics?.gradientRatio || 'N/A'
+            } : 'No data found');
+            console.log('Storage Key:', this.getStorageKey(srcUrl));
+            console.log('====================');
+            
             this.openModal(srcUrl);
         };
         badge.addEventListener('click', clickHandler);
     }
 
     async openModal(srcUrl) {
-        // Load modal template
-        const response = await fetch(chrome.runtime.getURL('src/html/modal.html'));
-        const modalTemplate = await response.text();
+        try {
+            // Check if extension context is still valid
+            if (!chrome.runtime?.id) {
+                console.warn('Extension context invalidated, cannot open modal');
+                return;
+            }
 
-        // Create modal
-        const modal = document.createElement('div');
-        modal.className = 'modal';
-        modal.dataset.botOrNotModal = 'true';
-        modal.dataset.srcUrl = srcUrl;
-        modal.innerHTML = modalTemplate;
+            // Load modal template
+            const response = await fetch(chrome.runtime.getURL('src/html/modal.html'));
+            if (!response.ok) {
+                throw new Error(`Failed to load modal template: ${response.status}`);
+            }
+            const modalTemplate = await response.text();
 
-        // Load modal styles
-        this.loadModalStyles();
+            // Create modal
+            const modal = document.createElement('div');
+            modal.className = 'modal';
+            modal.dataset.botOrNotModal = 'true';
+            modal.dataset.srcUrl = srcUrl;
+            modal.innerHTML = modalTemplate;
 
-        // Add to page
-        document.body.appendChild(modal);
+            // Load modal styles
+            this.loadModalStyles();
 
-        // Setup event listeners
-        this.setupModalEventListeners(modal);
+            // Add to page
+            document.body.appendChild(modal);
 
-        // Trigger animation
-        requestAnimationFrame(() => {
-            modal.classList.add('show');
-        });
+            // Setup event listeners
+            this.setupModalEventListeners(modal);
+
+            // Trigger animation
+            requestAnimationFrame(() => {
+                modal.classList.add('show');
+            });
+        } catch (error) {
+            console.error('Failed to open modal:', error);
+            if (error.message.includes('Extension context invalidated')) {
+                console.warn('Extension was reloaded. Please refresh the page to use the extension.');
+            }
+        }
+    }
+
+    loadIconStyles() {
+        if (document.querySelector('link[data-bot-or-not-icon-styles]')) return;
+
+        const link = document.createElement('link');
+        link.rel = 'stylesheet';
+        link.href = chrome.runtime.getURL('src/styles/icon.css');
+        link.dataset.botOrNotIconStyles = 'true';
+        document.head.appendChild(link);
     }
 
     loadModalStyles() {
@@ -237,20 +287,43 @@ class BotOrNotExtension {
     }
 
     async storeAnalysis(srcUrl, analysis) {
-        const key = this.getStorageKey(srcUrl);
-        const data = {
-            analysis,
-            timestamp: Date.now(),
-            pageUrl: window.location.href,
-            srcUrl
-        };
-        await chrome.storage.local.set({ [key]: data });
+        try {
+            // Check if extension context is valid
+            if (!chrome.runtime?.id) {
+                console.warn('Extension context invalidated, cannot store analysis');
+                return;
+            }
+            
+            const key = this.getStorageKey(srcUrl);
+            const data = {
+                analysis,
+                timestamp: Date.now(),
+                pageUrl: window.location.href,
+                srcUrl
+            };
+            
+            
+            await chrome.storage.local.set({ [key]: data });
+        } catch (error) {
+            console.error('Failed to store analysis:', error);
+        }
     }
 
     async getStoredAnalysis(srcUrl) {
-        const key = this.getStorageKey(srcUrl);
-        const result = await chrome.storage.local.get(key);
-        return result[key]?.analysis || null;
+        try {
+            // Check if extension context is valid
+            if (!chrome.runtime?.id) {
+                console.warn('Extension context invalidated, cannot get stored analysis');
+                return null;
+            }
+            
+            const key = this.getStorageKey(srcUrl);
+            const result = await chrome.storage.local.get(key);
+            return result[key]?.analysis || null;
+        } catch (error) {
+            console.error('Failed to get stored analysis:', error);
+            return null;
+        }
     }
 
     cleanupBadges() {
@@ -269,10 +342,10 @@ class BotOrNotExtension {
         for (const img of images) {
             if (img.src === srcUrl || img.currentSrc === srcUrl) {
                 return img;
-            }
-        }
-        return null;
+      }
     }
+    return null;
+  }
 
     debounce(func, wait) {
         let timeout;
@@ -290,12 +363,38 @@ class BotOrNotExtension {
 // Analyzer class for AI detection
 class BotOrNotAnalyzer {
   constructor() {
+    // Initialize components
+    this.initPromise = this.init();
+  }
+  
+  async init() {
+    // Wait for dependencies to load
+    if (typeof AISignatureDetector === 'undefined') {
+      await this.loadScript('src/js/aiSignatureDetector.js');
+    }
+    if (typeof CGIDetector === 'undefined') {
+      await this.loadScript('src/js/cgiDetector.js');
+    }
+    
     this.aiSignatureDetector = new AISignatureDetector();
     this.cgiDetector = new CGIDetector();
+  }
+  
+  async loadScript(src) {
+    return new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = chrome.runtime.getURL(src);
+      script.onload = resolve;
+      script.onerror = reject;
+      document.head.appendChild(script);
+    });
   }
 
   async analyzeMedia(srcUrl, mediaType, element = null) {
     try {
+      // Ensure analyzer is initialized
+      await this.initPromise;
+      
       // AI signature detection
       const signatureResult = await this.aiSignatureDetector.detectAISignatures(srcUrl);
 
@@ -418,11 +517,28 @@ class BotOrNotAnalyzer {
 
 // Global API is set up in setupModalEventListeners method when modal is created
 
+// Global error handler for extension context issues
+window.addEventListener('error', (event) => {
+    if (event.error?.message?.includes('Extension context invalidated')) {
+        console.warn('🔄 Extension context invalidated. Please refresh the page to use the Bot or Not extension.');
+        // Optionally show a user-friendly notification
+        event.preventDefault();
+    }
+});
+
 // Initialize extension
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', () => {
-        new BotOrNotExtension();
+        try {
+            new BotOrNotExtension();
+        } catch (error) {
+            console.error('Failed to initialize Bot or Not extension:', error);
+        }
   });
 } else {
-    new BotOrNotExtension();
+    try {
+        new BotOrNotExtension();
+    } catch (error) {
+        console.error('Failed to initialize Bot or Not extension:', error);
+    }
 }

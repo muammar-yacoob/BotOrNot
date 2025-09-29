@@ -58,14 +58,9 @@
 <script>
 // Forward control - modal.html fetches data from offline database
 async function initializeModal() {
-    console.log('Modal initialization started with forward control');
-
     // Get the source URL from the modal data attribute
     const modal = document.querySelector('[data-bot-or-not-modal]');
     const srcUrl = modal?.dataset.srcUrl;
-
-    console.log('Modal found:', modal);
-    console.log('Source URL:', srcUrl);
 
     if (!srcUrl) {
         console.error('No source URL found for modal');
@@ -78,27 +73,20 @@ async function initializeModal() {
 
     try {
         // Fetch analysis data from offline database
-        console.log('🚀 Starting analysis data fetch for:', srcUrl);
         const analysisData = await getStoredAnalysis(srcUrl);
 
         if (!analysisData) {
-            console.warn('❌ No analysis data found in storage');
+            console.warn('❌ No analysis data found in storage for image:', srcUrl);
             document.getElementById('result-text').textContent = '❌ No analysis data found';
-            
-            // Debug: List all keys in storage
-            const allData = await chrome.storage.local.get();
-            console.log('📋 All keys in storage:', Object.keys(allData));
             return;
         }
 
-        console.log('✅ Analysis data found, populating modal...');
+
         // Populate modal with analysis data
         populateModalData(analysisData, srcUrl);
 
-        console.log('🎉 Modal populated successfully');
-
     } catch (error) {
-        console.error('💥 Modal initialization failed:', error);
+        console.error('Modal initialization failed:', error);
         document.getElementById('result-text').textContent = '❌ Analysis Failed: ' + error.message;
     }
 }
@@ -106,30 +94,18 @@ async function initializeModal() {
 // Get storage key using same pattern as content.js
 function getStorageKey(srcUrl) {
     const pageUrl = window.location.href.split('#')[0]; // Remove hash
-    const key = `bot-or-not-analysis-${pageUrl}-${srcUrl}`;
-    console.log('🔑 Generated storage key:', key);
-    console.log('   - Page URL:', pageUrl);
-    console.log('   - Source URL:', srcUrl);
-    return key;
+    return `bot-or-not-analysis-${pageUrl}-${srcUrl}`;
 }
 
 // Fetch stored analysis from chrome.storage.local
 async function getStoredAnalysis(srcUrl) {
     const key = getStorageKey(srcUrl);
-    console.log('🔍 Fetching analysis with key:', key);
-    
     const result = await chrome.storage.local.get(key);
-    console.log('📦 Chrome storage result:', result);
-    
-    const analysis = result[key]?.analysis || null;
-    console.log('📊 Extracted analysis:', analysis);
-    
-    return analysis;
+    return result[key]?.analysis || null;
 }
 
 // Populate modal sections with analysis data
 function populateModalData(analysis, srcUrl) {
-    console.log('Populating modal with analysis:', analysis);
 
     // 1. Main Result Card
     const resultText = document.getElementById('result-text');
@@ -281,6 +257,4 @@ if (document.readyState === 'loading') {
 } else {
     initializeModal();
 }
-
-console.log('Modal HTML loaded with forward control database fetching');
 </script>
