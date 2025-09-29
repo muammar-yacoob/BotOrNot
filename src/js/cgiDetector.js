@@ -29,7 +29,7 @@ class CGIDetector {
 
             ctx.drawImage(imageElement, 0, 0, 300, 300);
             const imageData = ctx.getImageData(0, 0, 300, 300);
-
+            
             const metrics = this.analyzePixelPatterns(imageData);
             return this.classifyFromMetrics(metrics);
         } catch (error) {
@@ -129,93 +129,142 @@ class CGIDetector {
     }
 
     analyzePixelPatterns(imageData) {
-        const { data: pixels } = imageData;
-        const colors = new Set();
+        const { data: pixels, width, height } = imageData;
+
+        // Optimized sampling: use larger steps for speed, strategic positioning
+        const sampleStep = Math.max(1, Math.floor(Math.min(width, height) / 30)); // Adaptive sampling
+        const colorBuckets = new Map(); // Fast color bucketing
         let smoothTransitions = 0;
         let totalComparisons = 0;
+        let sampledPixels = 0;
 
-        // Count unique colors with color grouping to reduce precision
-        for (let i = 0; i < pixels.length; i += 4) {
-            const r = pixels[i];
-            const g = pixels[i + 1];
-            const b = pixels[i + 2];
-            const a = pixels[i + 3];
+        // Single-pass analysis: color counting + gradient analysis combined
+        for (let y = 0; y < height - sampleStep; y += sampleStep) {
+            for (let x = 0; x < width - sampleStep; x += sampleStep) {
+                const i = (y * width + x) * 4;
+                const r = pixels[i];
+                const g = pixels[i + 1];
+                const b = pixels[i + 2];
+                const a = pixels[i + 3];
 
-            if (a < 128) continue; // Skip transparent pixels
+                // Skip transparent/white pixels
+                if (a < 125 || (r > 250 && g > 250 && b > 250)) continue;
 
-            // Group colors to reduce precision and focus on major color differences
-            const colorKey = `${Math.floor(r/8)*8},${Math.floor(g/8)*8},${Math.floor(b/8)*8}`;
-            colors.add(colorKey);
+                sampledPixels++;
+
+                // Aggressive color quantization for speed (8 levels per channel = 512 total colors max)
+                const bucketR = (r >> 5) << 5; // Divide by 32, multiply by 32
+                const bucketG = (g >> 5) << 5;
+                const bucketB = (b >> 5) << 5;
+                const colorKey = (bucketR << 16) | (bucketG << 8) | bucketB; // Bit-packed key
+
+                colorBuckets.set(colorKey, (colorBuckets.get(colorKey) || 0) + 1);
+
+                // Fast gradient check (right neighbor only for speed)
+                const rightX = x + sampleStep;
+                if (rightX < width) {
+                    const rightI = (y * width + rightX) * 4;
+                    const rR = pixels[rightI];
+                    const gR = pixels[rightI + 1];
+                    const bR = pixels[rightI + 2];
+                    const aR = pixels[rightI + 3];
+
+                    if (aR >= 125) {
+                        // Fast approximate distance (Manhattan distance is faster than Euclidean)
+                        const colorDistance = Math.abs(r - rR) + Math.abs(g - gR) + Math.abs(b - bR);
+
+                        if (colorDistance < 30) smoothTransitions++; // Adjusted for Manhattan distance
+                        totalComparisons++;
+                    }
+                }
+            }
         }
 
-        // Calculate gradient ratio by comparing neighboring pixels
-        for (let i = 0; i < pixels.length; i += 4) {
-            const r = pixels[i];
-            const g = pixels[i + 1];
-            const b = pixels[i + 2];
-            const a = pixels[i + 3];
+        // Extract palette efficiently (top 8 colors)
+        const topColors = Array.from(colorBuckets.entries())
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 8)
+            .map(([colorKey]) => [
+                (colorKey >> 16) & 0xFF,  // Extract R
+                (colorKey >> 8) & 0xFF,   // Extract G
+                colorKey & 0xFF           // Extract B
+            ]);
 
-            if (a < 128) continue; // Skip transparent pixels
+        // Get dominant color (most frequent)
+        const dominantColorKey = colorBuckets.size > 0 ?
+            Array.from(colorBuckets.entries()).reduce((a, b) => a[1] > b[1] ? a : b)[0] : 0;
 
-            // Check right neighbor
-            if (i + 4 < pixels.length) {
-                const nextR = pixels[i + 4];
-                const nextG = pixels[i + 5];
-                const nextB = pixels[i + 6];
-                const diff = Math.abs(r - nextR) + Math.abs(g - nextG) + Math.abs(b - nextB);
-                if (diff < 20) smoothTransitions++;
-                totalComparisons++;
-            }
-
-            // Check bottom neighbor
-            if (i + (300 * 4) < pixels.length) {
-                const nextR = pixels[i + (300 * 4)];
-                const nextG = pixels[i + (300 * 4) + 1];
-                const nextB = pixels[i + (300 * 4) + 2];
-                const diff = Math.abs(r - nextR) + Math.abs(g - nextG) + Math.abs(b - nextB);
-                if (diff < 20) smoothTransitions++;
-                totalComparisons++;
-            }
-        }
-
-        const uniqueColors = colors.size;
-        const gradientRatio = totalComparisons > 0 ? smoothTransitions / totalComparisons : 0;
+        const dominantColor = [
+            (dominantColorKey >> 16) & 0xFF,
+            (dominantColorKey >> 8) & 0xFF,
+            dominantColorKey & 0xFF
+        ];
 
         return {
-            uniqueColors: uniqueColors,
-            gradientRatio: parseFloat(gradientRatio.toFixed(2))
+            uniqueColors: colorBuckets.size,
+            gradientRatio: totalComparisons > 0 ? parseFloat((smoothTransitions / totalComparisons).toFixed(3)) : 0,
+            paletteSize: topColors.length,
+            palette: topColors,
+            dominantColor,
+            sampledPixels // For debugging
         };
     }
+
+
 
     classifyFromMetrics(metrics) {
         const reasons = [];
         let isCGI = false;
         let isEdited = false;
 
-        // Heuristics tuned to match test expectations in test/test.md
-        if (metrics.uniqueColors < 800) {
+        // Adjusted thresholds for aggressive quantization (32-level quantization = max 512 colors)
+        // CGI/Digital art typically uses very limited color palettes
+
+        if (metrics.uniqueColors < 80) {
             isCGI = true;
             reasons.push('Low color count');
         }
-        if (metrics.gradientRatio > 0.65) {
-            isCGI = true;
-            reasons.push('Unrealistic smooth gradient');
-        }
 
-        if (!isCGI) {
-            if (metrics.uniqueColors < 1500 || metrics.gradientRatio > 0.5) {
-                isEdited = true;
-                reasons.push('Possible editing detected');
+        // Very smooth gradients indicate digital generation
+        if (metrics.gradientRatio > 0.7) {
+            if (isCGI) {
+                reasons.push('Unrealistic smooth gradient');
+            } else {
+                isCGI = true;
+                reasons.push('Unrealistic smooth gradient');
             }
         }
 
+        // Combined indicators for borderline cases
+        if (metrics.gradientRatio > 0.5 && metrics.uniqueColors < 120) {
+            if (!isCGI) {
+                isCGI = true;
+                reasons.push('Combined low colors and smooth gradients');
+            }
+        }
+
+        // Very limited palette indicates cartoon/animation
+        if (metrics.paletteSize <= 4) {
+            if (!isCGI) {
+                isCGI = true;
+                reasons.push('Very limited color palette');
+            }
+        }
+
+        // Photo editing detection for non-CGI images
+        if (!isCGI) {
+            if (metrics.uniqueColors < 200 && metrics.gradientRatio > 0.3) {
+                isEdited = true;
+                reasons.push('Possible photo editing detected');
+            }
+        }
+
+        // Fast confidence calculation
         let confidence = 0;
         if (isCGI) {
-            confidence = reasons.length >= 2 ? 92 : 85;
+            confidence = reasons.length >= 2 ? 90 : 85;
         } else if (isEdited) {
             confidence = 70;
-        } else {
-            confidence = 0;
         }
 
         return {
@@ -225,7 +274,9 @@ class CGIDetector {
             confidence,
             metrics: {
                 uniqueColors: metrics.uniqueColors,
-                gradientRatio: metrics.gradientRatio
+                gradientRatio: metrics.gradientRatio,
+                paletteSize: metrics.paletteSize,
+                sampledPixels: metrics.sampledPixels
             },
             corsBlocked: false,
             filtersDetected: []
