@@ -6,48 +6,33 @@
   
   <div class="modal-body">
     <!-- Main Result Card -->
-    <div class="card card-result" id="result-card">
-      <div class="text-primary" id="result-text"></div>
-      <div class="text-secondary" id="tool-text" style="display: none;">🛠️ <span id="tool-name"></span></div>
-      <div class="text-dim">Method: <span id="method-text"></span></div>
+    <div class="card card-result">
+      <div id="result-text" class="text-primary text-center">Loading...</div>
     </div>
 
-    <!-- Signatures Section -->
-    <div class="section">
-      <div class="section-header">🔍 Found Signatures (<span id="signature-count">0</span>)</div>
-      <div class="section-content">
-        <div class="list" id="signatures-list"></div>
-      </div>
-    </div>
+    <!-- Analysis Sections -->
 
-    <!-- Summary Section -->
-    <div class="section">
-      <div class="section-header">📊 Analysis Summary</div>
-      <div class="section-content">
-        <div class="metrics" id="summary-metrics"></div>
-      </div>
-    </div>
+      <!-- Summary -->
+      <details open id="summary-section">
+        <summary>📊 Analysis Summary</summary>
+        <div class="section-content">
+          <div class="metrics" id="summary-metrics"></div>
+        </div>
+      </details>
 
-    <!-- Filters Section -->
-    <div class="section">
-      <div class="section-header">🎨 Filter Analysis</div>
-      <div class="section-content">
-        <div class="list" id="filters-list"></div>
+       
+      <!-- Image Preview -->
+      <div class="image-preview">
+        <img id="analyzed-image" alt="Analyzed media">
       </div>
-    </div>
-    
-    <!-- Image Preview -->
-    <div class="image-preview">
-      <img id="analyzed-image" alt="Analyzed media">
-    </div>
-    
-    <!-- Technical Details -->
-    <details id="details-details">
-      <summary>📋 Technical Details</summary>
-      <div class="content scrollable" id="details-content">
-        <ul id="details-list"></ul>
-      </div>
-    </details>
+      
+      <!-- Technical Details -->
+      <details id="details-details">
+        <summary>📋 Technical Details</summary>
+        <div class="content scrollable" id="details-content">
+          <ul id="details-list"></ul>
+        </div>
+      </details>
   </div>
   
   <div class="modal-footer">

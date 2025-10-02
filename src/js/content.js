@@ -11,6 +11,8 @@ class BotOrNotExtension {
             enableCGIDetection: true,
             enableHeaderParsing: true
         };
+        this.analysisQueue = [];
+        this.isProcessingQueue = false;
         this.init();
   }
 
@@ -98,6 +100,17 @@ class BotOrNotExtension {
     }
 
     async analyzeAndStore(img) {
+        this.analysisQueue.push(img);
+        this.processAnalysisQueue();
+    }
+
+    async processAnalysisQueue() {
+        if (this.isProcessingQueue || this.analysisQueue.length === 0) {
+            return;
+        }
+        this.isProcessingQueue = true;
+        const img = this.analysisQueue.shift();
+
         try {
             const analysis = await this.analyzer.analyzeMedia(img.src, 'image', img);
             await this.storeAnalysis(img.src, analysis);
@@ -106,6 +119,9 @@ class BotOrNotExtension {
             const errorAnalysis = { confidence: 'error', error: error.message, isAI: false };
             await this.storeAnalysis(img.src, errorAnalysis);
             this.updateBadgeFromStorage(img.src);
+        } finally {
+            this.isProcessingQueue = false;
+            this.processAnalysisQueue();
         }
     }
 
@@ -325,33 +341,28 @@ class BotOrNotExtension {
         const result = analysis.isAI ? `AI (${analysis.detectedTool || 'Digital Art'})` : 'Organic Content';
         resultText.textContent = analysis.isAI ? `🤖 ${result}` : `🌱 ${result}`;
         resultText.className = analysis.isAI ? 'text-danger' : 'text-success';
-
-        // 2. Signatures Section
-        const signatureCount = modal.querySelector('#signature-count');
-        const signaturesList = modal.querySelector('#signatures-list');
-        const signatures = analysis.signatures || [];
-        signatureCount.textContent = signatures.length;
-        if (signatures.length > 0) {
-            signaturesList.innerHTML = signatures.map(sig =>
-                `<div class="list-item">
-                    <div class="list-item-title">${sig.signature || 'Unknown'}</div>
-                    <div class="list-item-subtitle">${sig.tool || 'Unknown Tool'}</div>
-                </div>`
-            ).join('');
-        } else {
-            signaturesList.innerHTML = '<div class="list-item"><div class="list-item-title">No AI signatures detected</div></div>';
-        }
-
-        // 3. Summary Section
-        const summaryMetrics = modal.querySelector('#summary-metrics');
-        let metricsHtml = [];
-        if (analysis.confidence) metricsHtml.push(`<div class="metric"><span class="metric-label">Confidence:</span> <span class="metric-value">${analysis.confidence}</span></div>`);
-        if (analysis.method) metricsHtml.push(`<div class="metric"><span class="metric-label">Method:</span> <span class="metric-value">${analysis.method}</span></div>`);
-        if (analysis.aiScore) metricsHtml.push(`<div class="metric"><span class="metric-label">AI Score:</span> <span class="metric-value">${analysis.aiScore}</span></div>`);
-        summaryMetrics.innerHTML = metricsHtml.join('');
-
-        // 4. Image Preview
-        const analyzedImage = modal.querySelector('#analyzed-image');
+ 
+         // Summary Section - Hide if empty
+         const summarySection = modal.querySelector('#summary-section');
+         const summaryMetrics = modal.querySelector('#summary-metrics');
+         let metricsHtml = [];
+         if (analysis.confidence) metricsHtml.push(`<div class="metric"><span class="metric-label">Confidence:</span> <span class="metric-value">${analysis.confidence}</span></div>`);
+         if (analysis.method) metricsHtml.push(`<div class="metric"><span class="metric-label">Method:</span> <span class="metric-value">${analysis.method}</span></div>`);
+         if (analysis.aiScore) metricsHtml.push(`<div class="metric"><span class="metric-label">AI Score:</span> <span class="metric-value">${analysis.aiScore}</span></div>`);
+         
+         if (summarySection) {
+             if (metricsHtml.length > 0) {
+                 summarySection.style.display = 'block';
+                 if(summaryMetrics) summaryMetrics.innerHTML = metricsHtml.join('');
+             } else {
+                 summarySection.style.display = 'none';
+             }
+         } else if (summaryMetrics) {
+             summaryMetrics.innerHTML = metricsHtml.join('');
+         }
+ 
+         // 4. Image Preview
+         const analyzedImage = modal.querySelector('#analyzed-image');
         analyzedImage.src = srcUrl;
         analyzedImage.style.display = 'block';
 
@@ -370,7 +381,10 @@ class BotOrNotExtension {
             const summaryText = this.createSummaryTextForModal(analysis, srcUrl);
             navigator.clipboard.writeText(summaryText).then(() => {
                 copyBtn.textContent = 'Copied!';
-                setTimeout(() => copyBtn.textContent = 'Copy & Close', 1000);
+                setTimeout(() => {
+                    copyBtn.textContent = 'Copy & Close';
+                    window.BotOrNotContent.closeModal();
+                }, 500);
             });
         };
         modal.querySelector('#close-btn').onclick = () => window.BotOrNotContent.closeModal();
