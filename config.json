@@ -1,0 +1,9 @@
+{
+  "minImageSize": 100,
+  "badgeThreshold": 128,
+  "autoScan": true,
+  "showIcons": true,
+  "debounceDelay": 300,
+  "enableCGIDetection": true,
+  "enableHeaderParsing": true
+}

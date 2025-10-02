@@ -1,0 +1,88 @@
+/* Bot or Not Icon Badge Styles */
+
+/* ===== CSS VARIABLES ===== */
+:root {
+  --icon-size: 28px;
+  --icon-transition: all 0.3s linear;
+  --icon-position-top: 10px;
+  --icon-position-right: 10px;
+  --active-scale: 0.8;
+  --active-rotation: -2deg;
+  --active-transition: all 0.1s ease-out;
+}
+
+/* ===== ICON BADGE ===== */
+.bot-or-not-icon {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 60px;
+  height: 60px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  transition: var(--icon-transition);
+  user-select: none;
+  pointer-events: all;
+  opacity: 0.65;
+  filter: drop-shadow(-1px -1px 1px rgba(0, 0, 0, 0.8)) 
+          drop-shadow(1px -1px 1px rgba(0, 0, 0, 0.8)) 
+          drop-shadow(-1px 1px 1px rgba(0, 0, 0, 0.8)) 
+          drop-shadow(1px 1px 1px rgba(0, 0, 0, 0.8));
+}
+
+.bot-or-not-icon:hover {
+  opacity: 1;
+  filter: drop-shadow(-1px -1px 1px rgba(0, 0, 0, 0.8)) 
+          drop-shadow(1px -1px 1px rgba(0, 0, 0, 0.8)) 
+          drop-shadow(-1px 1px 1px rgba(0, 0, 0, 0.8)) 
+          drop-shadow(1px 1px 1px rgba(0, 0, 0, 0.8));
+  animation: scaleBounce 0.2s linear;
+}
+
+.bot-or-not-icon:active {
+  transform: scale(var(--active-scale)) rotate(var(--active-rotation));
+  transition: var(--active-transition);
+}
+
+@keyframes scaleBounce {
+  0% {
+    transform: scale(1);
+  }
+  60% {
+    transform: scale(1.4);
+  }
+  100% {
+    transform: scale(1.3);
+  }
+}
+
+/* ===== ICON IMAGES ===== */
+.bot-or-not-icon > img {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+  pointer-events: none;
+  display: block;
+}
+
+/* ===== CONFIDENCE STATES ===== */
+.bot-or-not-icon.confidence-error {
+  opacity: 0.4;
+}
+
+/* ===== LOADING STATE ===== */
+.bot-or-not-icon[data-loading="true"] {
+  opacity: 0.4;
+}
+
+.bot-or-not-icon[data-loading="true"] > img {
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}

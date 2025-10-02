@@ -1,0 +1,41 @@
+<div class="modal-content">
+  <div class="modal-header">
+    <h3>🔎 Bot or Not? Analysis</h3>
+    <button class="btn-close" id="close-btn">&times;</button>
+  </div>
+  
+  <div class="modal-body">
+    <!-- Main Result Card -->
+    <div class="card card-result">
+      <div id="result-text" class="text-primary text-center">Loading...</div>
+    </div>
+
+    <!-- Analysis Sections -->
+
+      <!-- Summary -->
+      <details open id="summary-section">
+        <summary>📊 Analysis Summary</summary>
+        <div class="section-content">
+          <div class="metrics" id="summary-metrics"></div>
+        </div>
+      </details>
+
+       
+      <!-- Image Preview -->
+      <div class="image-preview">
+        <img id="analyzed-image" alt="Analyzed media">
+      </div>
+      
+      <!-- Technical Details -->
+      <details id="details-details">
+        <summary>📋 Technical Details</summary>
+        <div class="content scrollable" id="details-content">
+          <ul id="details-list"></ul>
+        </div>
+      </details>
+  </div>
+  
+  <div class="modal-footer">
+    <button class="btn" id="copy-btn">Copy & Close</button>
+  </div>
+</div>
