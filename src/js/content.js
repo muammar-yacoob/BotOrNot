@@ -246,6 +246,9 @@ class BotOrNotExtension {
             // Add to page
             document.body.appendChild(modal);
 
+            // Populate the modal with data
+            this.populateModal(modal, srcUrl);
+
             // Setup event listeners
             this.setupModalEventListeners(modal);
 
@@ -308,6 +311,85 @@ class BotOrNotExtension {
         // Make close function globally accessible
         window.BotOrNotContent = window.BotOrNotContent || {};
         window.BotOrNotContent.closeModal = closeModal;
+    }
+
+    async populateModal(modal, srcUrl) {
+        const analysis = await this.getStoredAnalysis(srcUrl);
+        if (!analysis) {
+            modal.querySelector('#result-text').textContent = '❌ No analysis data found';
+            return;
+        }
+
+        // 1. Main Result Card
+        const resultText = modal.querySelector('#result-text');
+        const result = analysis.isAI ? `AI (${analysis.detectedTool || 'Digital Art'})` : 'Organic Content';
+        resultText.textContent = analysis.isAI ? `🤖 ${result}` : `🌱 ${result}`;
+        resultText.className = analysis.isAI ? 'text-danger' : 'text-success';
+
+        // 2. Signatures Section
+        const signatureCount = modal.querySelector('#signature-count');
+        const signaturesList = modal.querySelector('#signatures-list');
+        const signatures = analysis.signatures || [];
+        signatureCount.textContent = signatures.length;
+        if (signatures.length > 0) {
+            signaturesList.innerHTML = signatures.map(sig =>
+                `<div class="list-item">
+                    <div class="list-item-title">${sig.signature || 'Unknown'}</div>
+                    <div class="list-item-subtitle">${sig.tool || 'Unknown Tool'}</div>
+                </div>`
+            ).join('');
+        } else {
+            signaturesList.innerHTML = '<div class="list-item"><div class="list-item-title">No AI signatures detected</div></div>';
+        }
+
+        // 3. Summary Section
+        const summaryMetrics = modal.querySelector('#summary-metrics');
+        let metricsHtml = [];
+        if (analysis.confidence) metricsHtml.push(`<div class="metric"><span class="metric-label">Confidence:</span> <span class="metric-value">${analysis.confidence}</span></div>`);
+        if (analysis.method) metricsHtml.push(`<div class="metric"><span class="metric-label">Method:</span> <span class="metric-value">${analysis.method}</span></div>`);
+        if (analysis.aiScore) metricsHtml.push(`<div class="metric"><span class="metric-label">AI Score:</span> <span class="metric-value">${analysis.aiScore}</span></div>`);
+        summaryMetrics.innerHTML = metricsHtml.join('');
+
+        // 4. Image Preview
+        const analyzedImage = modal.querySelector('#analyzed-image');
+        analyzedImage.src = srcUrl;
+        analyzedImage.style.display = 'block';
+
+        // 5. Technical Details
+        const detailsList = modal.querySelector('#details-list');
+        let detailsHtml = `<li><b>Image:</b> ${srcUrl.split('/').pop()}</li>`;
+        detailsHtml += `<li><b>Result:</b> ${result}</li>`;
+        if (analysis.confidence) detailsHtml += `<li><b>Confidence:</b> ${analysis.confidence}</li>`;
+        if (analysis.method) detailsHtml += `<li><b>Method:</b> ${analysis.method}</li>`;
+        if (analysis.signatures?.length > 0) detailsHtml += `<li><b>Signatures:</b> ${analysis.signatures.length}</li>`;
+        detailsList.innerHTML = detailsHtml;
+
+        // 6. Setup Buttons
+        const copyBtn = modal.querySelector('#copy-btn');
+        copyBtn.onclick = () => {
+            const summaryText = this.createSummaryTextForModal(analysis, srcUrl);
+            navigator.clipboard.writeText(summaryText).then(() => {
+                copyBtn.textContent = 'Copied!';
+                setTimeout(() => copyBtn.textContent = 'Copy & Close', 1000);
+            });
+        };
+        modal.querySelector('#close-btn').onclick = () => window.BotOrNotContent.closeModal();
+    }
+
+    createSummaryTextForModal(analysis, srcUrl) {
+        let summary = `Bot or Not Analysis\n==================\n`;
+        summary += `Image: ${srcUrl}\n`;
+        summary += `Result: ${analysis.isAI ? `AI (${analysis.detectedTool || 'Digital Art'})` : 'Organic Content'}\n`;
+        if (analysis.confidence) summary += `Confidence: ${analysis.confidence}\n`;
+        if (analysis.method) summary += `Method: ${analysis.method}\n`;
+        if (analysis.aiScore) summary += `AI Score: ${analysis.aiScore}\n`;
+        if (analysis.signatures?.length > 0) {
+            summary += `\nSignatures Found:\n`;
+            analysis.signatures.forEach(sig => {
+                summary += `- ${sig.signature} (${sig.tool})\n`;
+            });
+        }
+        return summary;
     }
 
     // Offline Database Functions

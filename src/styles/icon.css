@@ -60,9 +60,9 @@
 }
 
 /* ===== ICON IMAGES ===== */
-.bot-or-not-icon img {
-  width: 28px !important;
-  height: 28px !important;
+.bot-or-not-icon > img {
+  width: 28px;
+  height: 28px;
   object-fit: contain;
   pointer-events: none;
   display: block;
@@ -78,7 +78,7 @@
   opacity: 0.4;
 }
 
-.bot-or-not-icon[data-loading="true"] img {
+.bot-or-not-icon[data-loading="true"] > img {
   animation: pulse 1.5s ease-in-out infinite;
 }
 
