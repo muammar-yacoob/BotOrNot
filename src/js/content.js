@@ -34,9 +34,9 @@ class BotOrNotExtension {
             
             const response = await fetch(chrome.runtime.getURL('config.json'));
             this.config = await response.json();
-        } catch (error) {
-            console.warn('Config not loaded, using defaults:', error);
-        }
+         } catch (error) {
+             // Config not loaded, using defaults
+         }
     }
 
     setupComponents() {
@@ -192,21 +192,6 @@ class BotOrNotExtension {
             e.stopPropagation();
             e.preventDefault();
             
-            // Get and log the stored analysis data for this image
-            const storedAnalysis = await this.getStoredAnalysis(srcUrl);
-            console.log('=== BADGE CLICKED ===');
-            console.log('Image:', srcUrl.substring(srcUrl.lastIndexOf('/') + 1));
-            console.log('Stored Data:', storedAnalysis ? {
-                result: storedAnalysis.isAI ? `AI (${storedAnalysis.detectedTool || 'Unknown tool'})` : 'Organic',
-                confidence: storedAnalysis.confidence,
-                method: storedAnalysis.method,
-                aiScore: storedAnalysis.aiScore,
-                signatures: storedAnalysis.signatures?.length || 0,
-                colors: storedAnalysis.cgiDetection?.metrics?.uniqueColors || 'N/A',
-                gradientRatio: storedAnalysis.cgiDetection?.metrics?.gradientRatio || 'N/A'
-            } : 'No data found');
-            console.log('Storage Key:', this.getStorageKey(srcUrl));
-            console.log('====================');
             
             this.openModal(srcUrl);
         };
@@ -273,10 +258,7 @@ class BotOrNotExtension {
                 modal.classList.add('show');
             });
         } catch (error) {
-            console.error('Failed to open modal:', error);
-            if (error.message.includes('Extension context invalidated')) {
-                console.warn('Extension was reloaded. Please refresh the page to use the extension.');
-            }
+            // Modal failed to open
         }
     }
 
@@ -441,7 +423,7 @@ class BotOrNotExtension {
             
             await chrome.storage.local.set({ [key]: data });
         } catch (error) {
-            console.error('Failed to store analysis:', error);
+            // Failed to store analysis
         }
     }
 
@@ -465,7 +447,6 @@ class BotOrNotExtension {
             const result = await chrome.storage.local.get(key);
             return result[key]?.analysis || null;
         } catch (error) {
-            console.error('Failed to get stored analysis:', error);
             return null;
         }
     }
@@ -554,9 +535,9 @@ class BotOrNotAnalyzer {
       if (mediaType === 'image' && element?.tagName === 'IMG') {
         try {
           cgiAnalysis = await this.cgiDetector.analyzeImage(element);
-        } catch (cgiError) {
-          console.warn('CGI analysis failed:', cgiError.message);
-        }
+         } catch (cgiError) {
+           // CGI analysis failed
+         }
       }
 
       return this.buildAnalysisResult(headerAnalysis, cgiAnalysis, srcUrl, mediaType);
@@ -664,8 +645,6 @@ class BotOrNotAnalyzer {
 // Global error handler for extension context issues
 window.addEventListener('error', (event) => {
     if (event.error?.message?.includes('Extension context invalidated')) {
-        console.warn('🔄 Extension context invalidated. Please refresh the page to use the Bot or Not extension.');
-        // Optionally show a user-friendly notification
         event.preventDefault();
     }
 });
@@ -676,13 +655,13 @@ if (document.readyState === 'loading') {
         try {
             new BotOrNotExtension();
         } catch (error) {
-            console.error('Failed to initialize Bot or Not extension:', error);
+            // Failed to initialize extension
         }
   });
 } else {
     try {
         new BotOrNotExtension();
     } catch (error) {
-        console.error('Failed to initialize Bot or Not extension:', error);
+        // Failed to initialize extension
     }
 }
