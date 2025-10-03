@@ -2,22 +2,27 @@
 
 /* ===== CSS VARIABLES ===== */
 :root {
-  --icon-size: 28px;
-  --icon-transition: all 0.3s linear;
-  --icon-position-top: 10px;
-  --icon-position-right: 10px;
-  --active-scale: 0.8;
-  --active-rotation: -2deg;
+  --icon-size: 32px;
+  --icon-transition: all 0.2s ease-out;
+  --icon-position-top: 6px;
+  --icon-position-right: 6px;
+  --active-scale: 0.95;
   --active-transition: all 0.1s ease-out;
+}
+
+/* ===== IMAGE WRAPPER ===== */
+.bot-or-not-wrapper {
+  position: relative !important;
+  display: inline-block !important;
 }
 
 /* ===== ICON BADGE ===== */
 .bot-or-not-icon {
   position: absolute;
-  top: 4px;
-  right: 4px;
-  width: 60px;
-  height: 60px;
+  top: 6px;
+  right: 6px;
+  width: 32px;
+  height: 32px;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -26,43 +31,25 @@
   transition: var(--icon-transition);
   user-select: none;
   pointer-events: all;
-  opacity: 0.65;
-  filter: drop-shadow(-1px -1px 1px rgba(0, 0, 0, 0.8)) 
-          drop-shadow(1px -1px 1px rgba(0, 0, 0, 0.8)) 
-          drop-shadow(-1px 1px 1px rgba(0, 0, 0, 0.8)) 
-          drop-shadow(1px 1px 1px rgba(0, 0, 0, 0.8));
+  opacity: 0.75;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.9));
 }
 
 .bot-or-not-icon:hover {
   opacity: 1;
-  filter: drop-shadow(-1px -1px 1px rgba(0, 0, 0, 0.8)) 
-          drop-shadow(1px -1px 1px rgba(0, 0, 0, 0.8)) 
-          drop-shadow(-1px 1px 1px rgba(0, 0, 0, 0.8)) 
-          drop-shadow(1px 1px 1px rgba(0, 0, 0, 0.8));
-  animation: scaleBounce 0.2s linear;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.9));
+  transform: scale(1.1);
 }
 
 .bot-or-not-icon:active {
-  transform: scale(var(--active-scale)) rotate(var(--active-rotation));
+  transform: scale(0.95);
   transition: var(--active-transition);
-}
-
-@keyframes scaleBounce {
-  0% {
-    transform: scale(1);
-  }
-  60% {
-    transform: scale(1.4);
-  }
-  100% {
-    transform: scale(1.3);
-  }
 }
 
 /* ===== ICON IMAGES ===== */
 .bot-or-not-icon > img {
-  width: 28px;
-  height: 28px;
+  width: 100%;
+  height: 100%;
   object-fit: contain;
   pointer-events: none;
   display: block;

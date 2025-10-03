@@ -12,98 +12,113 @@
             <h1>🔎 Bot or Not</h1>
             <p class="settings-subtitle">AI Content Detection Settings</p>
         </div>
-        
+
         <div class="settings-content">
             <!-- General Settings -->
             <div class="setting-group">
-                <h3>General Settings</h3>
+                <h3>General</h3>
                 <div class="setting-item">
                     <label class="setting-label">
                         <input type="checkbox" id="auto-scan" checked>
                         <span class="checkmark"></span>
-                        Auto-scan images on page load
+                        <span>Auto-scan images</span>
                     </label>
-                    <p class="setting-description">Automatically analyze images when pages load</p>
                 </div>
-                
+
                 <div class="setting-item">
                     <label class="setting-label">
                         <input type="checkbox" id="show-organic" checked>
                         <span class="checkmark"></span>
-                        Show badges on organic content
+                        <span>Show organic badges</span>
                     </label>
-                    <p class="setting-description">Display badges on non-AI images for transparency</p>
                 </div>
             </div>
-            
-            <!-- Detection Settings -->
+
+            <!-- Detection Thresholds -->
             <div class="setting-group">
-                <h3>Detection Settings</h3>
+                <h3>Detection Thresholds</h3>
+
                 <div class="setting-item">
-                    <label class="setting-label">
-                        <input type="checkbox" id="signature-detection" checked>
-                        <span class="checkmark"></span>
-                        Signature-based detection
-                    </label>
-                    <p class="setting-description">Analyze file headers for AI signatures</p>
-                </div>
-                
-                <div class="setting-item">
-                    <label class="setting-label">
-                        <input type="checkbox" id="color-analysis" checked>
-                        <span class="checkmark"></span>
-                        Color analysis
-                    </label>
-                    <p class="setting-description">Analyze color patterns for CGI detection</p>
-                </div>
-            </div>
-            
-            <!-- Advanced Settings -->
-            <div class="setting-group">
-                <h3>Advanced Settings</h3>
-                <div class="setting-item">
-                    <label for="min-image-size" class="setting-label">Minimum image size (px):</label>
-                    <input type="number" id="min-image-size" value="100" min="50" max="500">
-                    <p class="setting-description">Only analyze images larger than this size</p>
-                </div>
-                
-                <div class="setting-item">
-                    <label for="confidence-threshold" class="setting-label">Confidence threshold (%):</label>
-                    <input type="range" id="confidence-threshold" min="50" max="95" value="70">
-                    <span id="confidence-value">70%</span>
-                    <p class="setting-description">Minimum confidence for AI detection</p>
-                </div>
-            </div>
-            
-            <!-- Statistics -->
-            <div class="setting-group">
-                <h3>Statistics</h3>
-                <div class="stats-grid">
-                    <div class="stat-item">
-                        <span class="stat-label">Images Analyzed:</span>
-                        <span class="stat-value" id="images-analyzed">0</span>
+                    <div class="slider-container">
+                        <label class="slider-label">
+                            <span>Cartoon threshold (colors)</span>
+                            <span class="slider-value" id="cartoon-threshold-value">330</span>
+                        </label>
+                        <input type="range" id="cartoon-threshold" min="100" max="400" value="330" step="10">
+                        <p class="setting-hint">Below this → Cartoon/Animation</p>
                     </div>
-                    <div class="stat-item">
-                        <span class="stat-label">AI Detected:</span>
-                        <span class="stat-value" id="ai-detected">0</span>
+                </div>
+
+                <div class="setting-item">
+                    <div class="slider-container">
+                        <label class="slider-label">
+                            <span>CGI color threshold (colors)</span>
+                            <span class="slider-value" id="cgi-color-value">480</span>
+                        </label>
+                        <input type="range" id="cgi-color-threshold" min="200" max="600" value="480" step="10">
+                        <p class="setting-hint">Below this + smooth gradient → CGI</p>
                     </div>
-                    <div class="stat-item">
-                        <span class="stat-label">Organic Content:</span>
-                        <span class="stat-value" id="organic-detected">0</span>
+                </div>
+
+                <div class="setting-item">
+                    <div class="slider-container">
+                        <label class="slider-label">
+                            <span>CGI gradient threshold (%)</span>
+                            <span class="slider-value" id="cgi-gradient-value">38</span>
+                        </label>
+                        <input type="range" id="cgi-gradient-threshold" min="20" max="70" value="38" step="2">
+                        <p class="setting-hint">Above this → CGI smoothness</p>
+                    </div>
+                </div>
+
+                <div class="setting-item">
+                    <div class="slider-container">
+                        <label class="slider-label">
+                            <span>Filter threshold (%)</span>
+                            <span class="slider-value" id="filter-gradient-value">55</span>
+                        </label>
+                        <input type="range" id="filter-gradient-threshold" min="40" max="80" value="55" step="5">
+                        <p class="setting-hint">Above this → Photo filter</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Sampling Settings -->
+            <div class="setting-group">
+                <h3>Performance</h3>
+
+                <div class="setting-item">
+                    <div class="slider-container">
+                        <label class="slider-label">
+                            <span>Sampling density</span>
+                            <span class="slider-value" id="sampling-value">50</span>
+                        </label>
+                        <input type="range" id="sampling-density" min="30" max="100" value="50" step="10">
+                        <p class="setting-hint">Higher = More accurate, slower</p>
+                    </div>
+                </div>
+
+                <div class="setting-item">
+                    <div class="slider-container">
+                        <label class="slider-label">
+                            <span>Color quantization</span>
+                            <span class="slider-value" id="quantization-value">16</span>
+                        </label>
+                        <input type="range" id="color-quantization" min="8" max="32" value="16" step="4">
+                        <p class="setting-hint">Levels per channel (8-32)</p>
                     </div>
                 </div>
             </div>
         </div>
-        
+
         <div class="settings-footer">
             <div class="actions">
-                <button id="save-settings" class="btn btn-primary">Save Settings</button>
-                <button id="reset-settings" class="btn btn-secondary">Reset to Defaults</button>
-                <button id="export-data" class="btn btn-outline">Export Data</button>
+                <button id="save-settings" class="btn btn-primary">💾 Save</button>
+                <button id="reset-settings" class="btn btn-secondary">↺ Reset</button>
             </div>
-            
+
             <div class="footer-info">
-                <p>Bot or Not v1.0.0 | <a href="#" id="privacy-link">Privacy Policy</a> | <a href="#" id="help-link">Help</a></p>
+                <p>v1.0.0</p>
             </div>
         </div>
     </div>

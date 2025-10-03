@@ -1,4 +1,4 @@
-// Bot or Not Content Script - Simple Offline Database Approach
+// Bot or Not Content Script
 class BotOrNotExtension {
   constructor() {
         this.analyzer = null;
@@ -8,8 +8,14 @@ class BotOrNotExtension {
             autoScan: true,
             showIcons: true,
             debounceDelay: 300,
-            enableCGIDetection: true,
-            enableHeaderParsing: true
+            // Detection thresholds (calibrated for test.md actual measurements)
+            cartoonThreshold: 330,    // Below this = Cartoon (avg CGI=274, max=323)
+            cgiColorThreshold: 480,   // Below this + smooth gradient = CGI (neonStreet=471)
+            cgiGradientThreshold: 38, // Above this = CGI smoothness (CGI avg=50%, organic=26%)
+            filterGradientThreshold: 55, // Above this = Heavy filter
+            // Performance
+            samplingDensity: 50,      // Balance of speed and accuracy (~2500 pixels)
+            colorQuantization: 16     // 16 levels per channel (4096 max colors)
         };
         this.analysisQueue = [];
         this.isProcessingQueue = false;
@@ -17,26 +23,28 @@ class BotOrNotExtension {
   }
 
   async init() {
-        await this.loadConfig();
+        await this.loadSettings();
         this.loadIconStyles();
         this.setupComponents();
         this.setupMessageListener();
         this.startAutoScan();
     }
 
-    async loadConfig() {
+    async loadSettings() {
         try {
-            // Check if extension context is valid
-            if (!chrome.runtime?.id) {
-                console.warn('Extension context invalidated during config load');
-                return;
+            // Load from chrome.storage.sync
+            const result = await chrome.storage.sync.get([
+                'autoScan', 'showOrganic', 'cartoonThreshold', 'cgiColorThreshold',
+                'cgiGradientThreshold', 'filterGradientThreshold',
+                'samplingDensity', 'colorQuantization'
+            ]);
+
+            if (Object.keys(result).length > 0) {
+                this.config = { ...this.config, ...result };
             }
-            
-            const response = await fetch(chrome.runtime.getURL('config.json'));
-            this.config = await response.json();
-         } catch (error) {
-             // Config not loaded, using defaults
-         }
+        } catch (error) {
+            console.warn('Failed to load settings, using defaults:', error);
+        }
     }
 
     setupComponents() {
@@ -50,10 +58,14 @@ class BotOrNotExtension {
                 const analysis = await this.analyzer.analyzeMedia(
                     message.srcUrl,
                     message.mediaType,
-                    element
+                    element,
+                    this.config // Pass config to analyzer
                 );
                 await this.storeAnalysis(message.srcUrl, analysis);
                 this.openModal(message.srcUrl);
+            } else if (message.action === 'settingsUpdated') {
+                // Reload settings when updated from settings page
+                this.config = { ...this.config, ...message.settings };
             }
         });
     }
@@ -87,6 +99,9 @@ class BotOrNotExtension {
         if (rect.width < this.config.badgeThreshold || rect.height < this.config.badgeThreshold) return;
         if (img.closest('[data-bot-or-not-modal]')) return;
 
+        // Bail early if we cannot reliably determine the image origin
+        if (!this.canDetermineOrigin(img.src)) return;
+
         img.dataset.botOrNotProcessed = 'true';
 
         // Check if analysis already exists in database
@@ -96,6 +111,20 @@ class BotOrNotExtension {
         } else {
             this.addBadge(img, null); // Will show analyzing icon
             this.analyzeAndStore(img);
+        }
+    }
+
+    // Determine if the image origin can be reliably resolved
+    canDetermineOrigin(srcUrl) {
+        try {
+            const url = new URL(srcUrl, document.baseURI);
+            // Disallow data/blob/about URLs entirely
+            if (url.protocol === 'data:' || url.protocol === 'blob:' || url.protocol === 'about:') return false;
+            // Opaque origin (e.g., cross-origin without origin) except allow file:// pages for local testing
+            if (url.origin === 'null' && window.location.protocol !== 'file:') return false;
+            return true;
+        } catch (_) {
+            return false;
         }
     }
 
@@ -130,19 +159,16 @@ class BotOrNotExtension {
         badge.className = 'bot-or-not-icon';
         badge.dataset.srcUrl = img.src;
 
-        // Position badge
-        const computedStyle = window.getComputedStyle(img);
-        if (computedStyle.position === 'static') {
-            img.style.position = 'relative';
-        }
-        img.parentElement.appendChild(badge);
+        // Create wrapper for image if needed (to avoid layout shifts)
+        const wrapper = this.ensureImageWrapper(img);
+        wrapper.appendChild(badge);
 
         if (analysis) {
             this.updateBadgeDisplay(badge, analysis);
         } else {
             badge.dataset.loading = 'true';
             if (chrome?.runtime?.id) {
-                badge.innerHTML = `<img src="${chrome.runtime.getURL('assets/icons/analyzing.png')}" alt="Analyzing..." style="width: 28px; height: 28px;" />`;
+                badge.innerHTML = `<img src="${chrome.runtime.getURL('assets/icons/analyzing.png')}" alt="Analyzing..." />`;
             } else {
                 badge.textContent = '…';
                 badge.title = 'Analyzing';
@@ -152,28 +178,99 @@ class BotOrNotExtension {
         this.attachClickHandler(badge, img.src);
     }
 
+    ensureImageWrapper(img) {
+        // If image already has a wrapper, return it
+        const existingWrapper = img.parentElement;
+        if (existingWrapper?.classList.contains('bot-or-not-wrapper')) {
+            return existingWrapper;
+        }
+
+        // Check if parent is already positioned (can serve as wrapper)
+        const parentStyle = window.getComputedStyle(existingWrapper);
+        if (parentStyle.position !== 'static' && parentStyle.position !== '') {
+            // Parent is already positioned, add wrapper class to track it
+            existingWrapper.classList.add('bot-or-not-wrapper');
+            return existingWrapper;
+        }
+
+        // Create minimal wrapper only if absolutely necessary
+        const wrapper = document.createElement('span');
+        wrapper.className = 'bot-or-not-wrapper';
+        wrapper.style.display = 'inline-block';
+        wrapper.style.position = 'relative';
+
+        // Preserve image's display characteristics
+        const imgStyle = window.getComputedStyle(img);
+        if (imgStyle.display === 'block') {
+            wrapper.style.display = 'block';
+        }
+
+        img.parentElement.insertBefore(wrapper, img);
+        wrapper.appendChild(img);
+        return wrapper;
+    }
+
     updateBadgeDisplay(badge, analysis) {
         badge.dataset.loading = 'false';
         badge.dataset.confidence = analysis.confidence || 'none';
         badge.dataset.isAi = analysis.isAI ? 'true' : 'false';
+        badge.dataset.contentType = analysis.contentType || 'unknown';
         badge.className = `bot-or-not-icon confidence-${analysis.confidence}`;
 
-        let iconPath, altText;
+        let iconPath, altText, emoji;
+
         if (analysis.confidence === 'error') {
             iconPath = 'assets/icons/icon32.png';
             altText = 'Error';
+            emoji = '❌';
             badge.title = `Analysis Error: ${analysis.error || 'Unknown error'}`;
         } else {
-            iconPath = analysis.isAI ? 'assets/icons/bot.png' : 'assets/icons/organic.png';
-            altText = analysis.isAI ? 'AI' : 'Organic';
-            badge.title = analysis.isAI ?
-                `AI Detected: ${analysis.aiScore || 0}% confidence${analysis.detectedTool ? ` (${analysis.detectedTool})` : ''}` :
-                'Organic Content';
+            // Select icon based on content type
+            switch (analysis.contentType) {
+                case 'ai':
+                    iconPath = 'assets/icons/bot.png';
+                    altText = 'AI Generated';
+                    emoji = '🤖';
+                    badge.title = `AI Detected (${analysis.detectedTool || 'Unknown Tool'})`;
+                    break;
+                case 'cartoon':
+                    iconPath = 'assets/icons/bot.png';
+                    altText = 'Cartoon/Animation';
+                    emoji = '🎨';
+                    badge.title = `Cartoon/Animation Detected`;
+                    break;
+                case 'cgi':
+                    iconPath = 'assets/icons/cgi.png';
+                    altText = 'CGI/3D Render';
+                    emoji = '✨';
+                    badge.title = `CGI/3D Render Detected`;
+                    break;
+                case 'filtered':
+                    iconPath = 'assets/icons/cgi.png';
+                    altText = 'Filtered Photo';
+                    emoji = '🎭';
+                    badge.title = `Photo Filter Detected`;
+                    break;
+                case 'organic':
+                    iconPath = 'assets/icons/organic.png';
+                    altText = 'Organic Photo';
+                    emoji = '📷';
+                    badge.title = 'Organic Photo';
+                    break;
+                default:
+                    iconPath = 'assets/icons/icon32.png';
+                    altText = 'Unknown';
+                    emoji = '❓';
+                    badge.title = 'Analysis Incomplete';
+            }
         }
+
         if (chrome?.runtime?.id) {
-            badge.innerHTML = `<img src="${chrome.runtime.getURL(iconPath)}" alt="${altText}" style="width: 28px; height: 28px;" />`;
+            badge.innerHTML = `<img src="${chrome.runtime.getURL(iconPath)}" alt="${altText}" />`;
         } else {
-            badge.textContent = analysis.isAI ? 'AI' : 'ORG';
+            // Fallback: use emoji
+            badge.textContent = emoji;
+            badge.style.fontSize = '24px';
         }
     }
 
@@ -320,18 +417,67 @@ class BotOrNotExtension {
 
         // 1. Main Result Card
         const resultText = modal.querySelector('#result-text');
-        const result = analysis.isAI ? `AI (${analysis.detectedTool || 'Digital Art'})` : 'Organic Content';
-        resultText.textContent = analysis.isAI ? `🤖 ${result}` : `🌱 ${result}`;
-        resultText.className = analysis.isAI ? 'text-danger' : 'text-success';
+        let result, emoji, className;
+
+        switch (analysis.contentType) {
+            case 'ai':
+                emoji = '🤖';
+                result = `AI Generated (${analysis.detectedTool || 'Unknown Tool'})`;
+                className = 'text-danger';
+                break;
+            case 'cartoon':
+                emoji = '🎨';
+                result = 'Cartoon/Animation';
+                className = 'text-danger';
+                break;
+            case 'cgi':
+                emoji = '✨';
+                result = 'CGI/3D Render';
+                className = 'text-danger';
+                break;
+            case 'filtered':
+                emoji = '🎭';
+                result = 'Filtered Photo';
+                className = 'text-warning';
+                break;
+            case 'organic':
+                emoji = '📷';
+                result = 'Organic Photo';
+                className = 'text-success';
+                break;
+            default:
+                emoji = '❓';
+                result = 'Unknown';
+                className = 'text-muted';
+        }
+
+        resultText.textContent = `${emoji} ${result}`;
+        resultText.className = className;
  
-         // Summary Section - Hide if empty
+         // Summary Section
          const summarySection = modal.querySelector('#summary-section');
          const summaryMetrics = modal.querySelector('#summary-metrics');
          let metricsHtml = [];
-         if (analysis.confidence) metricsHtml.push(`<div class="metric"><span class="metric-label">Confidence:</span> <span class="metric-value">${analysis.confidence}</span></div>`);
-         if (analysis.method) metricsHtml.push(`<div class="metric"><span class="metric-label">Method:</span> <span class="metric-value">${analysis.method}</span></div>`);
-         if (analysis.aiScore) metricsHtml.push(`<div class="metric"><span class="metric-label">AI Score:</span> <span class="metric-value">${analysis.aiScore}</span></div>`);
-         
+
+         if (analysis.confidence) {
+             metricsHtml.push(`<div class="metric"><span class="metric-label">Confidence:</span> <span class="metric-value">${analysis.confidence}</span></div>`);
+         }
+         if (analysis.method) {
+             metricsHtml.push(`<div class="metric"><span class="metric-label">Detection Method:</span> <span class="metric-value">${analysis.method}</span></div>`);
+         }
+
+         // Add visual metrics if available
+         if (analysis.cgiDetection?.metrics) {
+             const colorCount = analysis.cgiDetection.metrics.uniqueColors;
+             const gradientRatio = analysis.cgiDetection.metrics.gradientRatio;
+             if (colorCount > 0) {
+                 metricsHtml.push(`<div class="metric"><span class="metric-label">Color Count:</span> <span class="metric-value">${colorCount}</span></div>`);
+             }
+             if (gradientRatio > 0) {
+                 metricsHtml.push(`<div class="metric"><span class="metric-label">Gradient Smoothness:</span> <span class="metric-value">${(gradientRatio * 100).toFixed(0)}%</span></div>`);
+             }
+         }
+
          if (summarySection) {
              if (metricsHtml.length > 0) {
                  summarySection.style.display = 'block';
@@ -350,11 +496,21 @@ class BotOrNotExtension {
 
         // 5. Technical Details
         const detailsList = modal.querySelector('#details-list');
-        let detailsHtml = `<li><b>Image:</b> ${srcUrl.split('/').pop()}</li>`;
-        detailsHtml += `<li><b>Result:</b> ${result}</li>`;
-        if (analysis.confidence) detailsHtml += `<li><b>Confidence:</b> ${analysis.confidence}</li>`;
-        if (analysis.method) detailsHtml += `<li><b>Method:</b> ${analysis.method}</li>`;
-        if (analysis.signatures?.length > 0) detailsHtml += `<li><b>Signatures:</b> ${analysis.signatures.length}</li>`;
+        let detailsHtml = `<li><b>File:</b> ${srcUrl.split('/').pop()}</li>`;
+        detailsHtml += `<li><b>Classification:</b> ${result}</li>`;
+
+        if (analysis.signatures?.length > 0) {
+            detailsHtml += `<li><b>AI Signatures:</b> ${analysis.signatures.map(s => s.tool).join(', ')}</li>`;
+        }
+
+        if (analysis.cgiDetection?.metrics) {
+            detailsHtml += `<li><b>Visual Analysis:</b> ${analysis.cgiDetection.metrics.uniqueColors} colors, ${(analysis.cgiDetection.metrics.gradientRatio * 100).toFixed(0)}% smooth gradients</li>`;
+        }
+
+        if (analysis.details?.length > 0) {
+            detailsHtml += `<li><b>Details:</b> ${analysis.details.join(' • ')}</li>`;
+        }
+
         detailsList.innerHTML = detailsHtml;
 
         // 6. Setup Buttons
@@ -374,17 +530,43 @@ class BotOrNotExtension {
 
     createSummaryTextForModal(analysis, srcUrl) {
         let summary = `Bot or Not Analysis\n==================\n`;
-        summary += `Image: ${srcUrl}\n`;
-        summary += `Result: ${analysis.isAI ? `AI (${analysis.detectedTool || 'Digital Art'})` : 'Organic Content'}\n`;
+        summary += `File: ${srcUrl.split('/').pop()}\n`;
+
+        // Content type result
+        let result;
+        switch (analysis.contentType) {
+            case 'ai': result = `AI Generated (${analysis.detectedTool || 'Unknown Tool'})`; break;
+            case 'cartoon': result = 'Cartoon/Animation'; break;
+            case 'cgi': result = 'CGI/3D Render'; break;
+            case 'filtered': result = 'Filtered Photo'; break;
+            case 'organic': result = 'Organic Photo'; break;
+            default: result = 'Unknown';
+        }
+        summary += `Classification: ${result}\n`;
+
         if (analysis.confidence) summary += `Confidence: ${analysis.confidence}\n`;
-        if (analysis.method) summary += `Method: ${analysis.method}\n`;
-        if (analysis.aiScore) summary += `AI Score: ${analysis.aiScore}\n`;
+        if (analysis.method) summary += `Detection Method: ${analysis.method}\n`;
+
         if (analysis.signatures?.length > 0) {
-            summary += `\nSignatures Found:\n`;
+            summary += `\nAI Signatures Found:\n`;
             analysis.signatures.forEach(sig => {
                 summary += `- ${sig.signature} (${sig.tool})\n`;
             });
         }
+
+        if (analysis.cgiDetection?.metrics) {
+            summary += `\nVisual Analysis:\n`;
+            summary += `- Color Count: ${analysis.cgiDetection.metrics.uniqueColors}\n`;
+            summary += `- Gradient Smoothness: ${(analysis.cgiDetection.metrics.gradientRatio * 100).toFixed(0)}%\n`;
+        }
+
+        if (analysis.details?.length > 0) {
+            summary += `\nAnalysis Details:\n`;
+            analysis.details.forEach(detail => {
+                summary += `- ${detail}\n`;
+            });
+        }
+
         return summary;
     }
 
@@ -515,11 +697,11 @@ class BotOrNotAnalyzer {
     });
   }
 
-  async analyzeMedia(srcUrl, mediaType, element = null) {
+  async analyzeMedia(srcUrl, mediaType, element = null, config = {}) {
     try {
       // Ensure analyzer is initialized
       await this.initPromise;
-      
+
       // AI signature detection
       const signatureResult = await this.aiSignatureDetector.detectAISignatures(srcUrl);
 
@@ -530,96 +712,126 @@ class BotOrNotAnalyzer {
         fileType: signatureResult.fileType
       };
 
-      // CGI analysis for images
+      // CGI analysis for images with configurable settings
       let cgiAnalysis = null;
       if (mediaType === 'image' && element?.tagName === 'IMG') {
         try {
-          cgiAnalysis = await this.cgiDetector.analyzeImage(element);
+          cgiAnalysis = await this.cgiDetector.analyzeImage(element, config);
          } catch (cgiError) {
            // CGI analysis failed
          }
       }
 
-      return this.buildAnalysisResult(headerAnalysis, cgiAnalysis, srcUrl, mediaType);
+      return this.buildAnalysisResult(headerAnalysis, cgiAnalysis, srcUrl, mediaType, config);
 
     } catch (error) {
       return this.createErrorResult(error, srcUrl);
     }
   }
 
-    buildAnalysisResult(headerAnalysis, cgiAnalysis, srcUrl, mediaType) {
-      let isAI = false;
+    buildAnalysisResult(headerAnalysis, cgiAnalysis, srcUrl, mediaType, config = {}) {
+      let isAI = false; // TRUE only for signature-detected AI
       let confidence = 'none';
       let detectedTool = null;
       let method = 'header-parser';
-      let aiScore = 0;
+      let contentType = 'unknown';
       const details = [...(headerAnalysis.details || [])];
 
-      // Priority 1: Check for AI signatures in headers first
+      // Use configurable thresholds with fallback to defaults
+      const cartoonThreshold = config.cartoonThreshold || 120;
+      const cgiColorThreshold = config.cgiColorThreshold || 200;
+      const cgiGradientThreshold = (config.cgiGradientThreshold || 50) / 100; // Convert % to ratio
+      const filterGradientThreshold = (config.filterGradientThreshold || 65) / 100; // Convert % to ratio
+
+      // Priority 1: Check for AI signatures in headers (ONLY TRUE AI DETECTION)
       if (headerAnalysis.signatures?.length > 0) {
         isAI = true;
         confidence = 'high';
         detectedTool = headerAnalysis.signatures[0]?.tool;
         method = 'signature-detection';
-        aiScore = 95;
-        details.push(`AI signatures found: ${headerAnalysis.signatures.map(s => s.signature).join(', ')}`);
+        contentType = 'ai';
+        details.push(`AI tool signature found: ${headerAnalysis.signatures.map(s => s.signature).join(', ')}`);
       }
-      // Priority 2: If no signatures found, check CGI detection
+      // Priority 2: If no signatures, analyze visual characteristics
       else if (cgiAnalysis && !cgiAnalysis.corsBlocked) {
-        if (cgiAnalysis.isCGI) {
-          isAI = true;
+        const colorCount = cgiAnalysis.metrics?.uniqueColors || 0;
+        const gradientRatio = cgiAnalysis.metrics?.gradientRatio || 0;
+
+        // Add color analysis to details
+        details.push(`Color analysis: ${colorCount} unique colors, ${(gradientRatio * 100).toFixed(0)}% smooth gradients`);
+
+        // 2A: Very limited palette → Cartoon/Animation
+        if (colorCount < cartoonThreshold) {
           confidence = 'high';
-          detectedTool = 'CGI/Digital Art';
-          method = 'cgi-detection';
-          aiScore = cgiAnalysis.confidence || 90;
-          details.push(`CGI detected: ${cgiAnalysis.reasons.join(', ')}`);
-        } else if (cgiAnalysis.isEdited) {
-          isAI = true;
-          confidence = 'medium';
-          detectedTool = 'Photo Editing';
-          method = 'editing-detection';
-          aiScore = cgiAnalysis.confidence || 70;
-          details.push(`Photo editing detected: ${cgiAnalysis.reasons.join(', ')}`);
-        } else {
-          // Organic image - but still show CGI analysis results
-          confidence = 'none';
-          method = 'visual-analysis';
-          details.push('Visual analysis suggests organic content');
+          detectedTool = 'Cartoon/Animation';
+          method = 'color-palette-analysis';
+          contentType = 'cartoon';
+          details.push(`Limited color palette indicates cartoon/animation`);
         }
+        // 2B: Low-medium colors with smooth gradients → CGI
+        else if (colorCount >= cartoonThreshold && colorCount < cgiColorThreshold && gradientRatio > cgiGradientThreshold) {
+          confidence = 'high';
+          detectedTool = 'CGI/3D Render';
+          method = 'gradient-analysis';
+          contentType = 'cgi';
+          details.push(`Unrealistic smooth gradients with limited colors indicates CGI`);
+        }
+        // 2C: Medium colors with very smooth gradients → CGI or heavy filter
+        else if (colorCount >= cgiColorThreshold && gradientRatio > filterGradientThreshold) {
+          confidence = 'medium';
+          detectedTool = 'CGI or Heavy Filter';
+          method = 'gradient-analysis';
+          contentType = 'filtered';
+          details.push(`Very smooth gradients suggest CGI or heavy photo filtering`);
+        }
+         // 2D: Check minimum color threshold for organic classification
+         else if (colorCount >= 300) {
+           confidence = 'low';
+           detectedTool = null;
+           method = 'visual-analysis';
+           contentType = 'organic';
+           details.push(`Natural color distribution suggests organic photo`);
+         }
+         // 2E: Below 300 colors cannot be organic
+         else {
+           confidence = 'medium';
+           detectedTool = 'CGI/Digital Art';
+           method = 'color-threshold-analysis';
+           contentType = 'cgi';
+           details.push(`Low color count (${colorCount}) indicates CGI or digital art`);
+         }
       }
-      // Priority 3: If CORS blocked or no analysis possible
+      // Priority 3: CORS blocked or analysis failed
       else {
         confidence = 'none';
         method = cgiAnalysis?.corsBlocked ? 'blocked-by-cors' : 'no-analysis';
+        contentType = 'unknown';
         if (cgiAnalysis?.corsBlocked) {
           details.push('Analysis limited by cross-origin restrictions');
         }
       }
 
-      // Always include CGI analysis results if available, even for organic images
+      // Enrich CGI analysis
       const enrichedCGIAnalysis = cgiAnalysis ? {
         ...cgiAnalysis,
-        // Ensure metrics are always present
         metrics: {
           uniqueColors: cgiAnalysis.metrics?.uniqueColors || 0,
           gradientRatio: cgiAnalysis.metrics?.gradientRatio || 0,
           ...cgiAnalysis.metrics
         },
-        // Ensure filters detected is always an array
         filtersDetected: cgiAnalysis.filtersDetected || []
       } : null;
 
       return {
         confidence,
-        isAI,
+        isAI, // Only true for signature-detected AI
         detectedTool,
         method,
         details,
         signatures: headerAnalysis.signatures || [],
         fileInfo: { url: srcUrl, type: mediaType },
-        aiScore,
-        maxScore: 100,
-        cgiDetection: enrichedCGIAnalysis
+        cgiDetection: enrichedCGIAnalysis,
+        contentType
       };
     }
 
@@ -634,7 +846,8 @@ class BotOrNotAnalyzer {
         fileInfo: { url: srcUrl },
         aiScore: 0,
         maxScore: 100,
-        cgiDetection: null
+        cgiDetection: null,
+        contentType: 'error'
       };
     }
   }

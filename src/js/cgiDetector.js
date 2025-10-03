@@ -8,18 +8,19 @@ class CGIDetector {
     /**
      * Simple color counting CGI detection
      * @param {HTMLImageElement} imageElement - Image element to analyze
+     * @param {Object} config - Configuration with samplingDensity and colorQuantization
      * @returns {Promise<Object>} CGI analysis results with uniqueColors and gradientRatio
      */
-    async analyzeImage(imageElement) {
+    async analyzeImage(imageElement, config = {}) {
         try {
             // Check if image is cross-origin
-            const isCrossOrigin = imageElement.crossOrigin === 'anonymous' || 
-                                  imageElement.src.startsWith('http') && 
+            const isCrossOrigin = imageElement.crossOrigin === 'anonymous' ||
+                                  imageElement.src.startsWith('http') &&
                                   !imageElement.src.startsWith(window.location.origin);
 
             if (isCrossOrigin) {
                 // For cross-origin images, try to get data via background script
-                return await this.analyzeCrossOriginImage(imageElement.src);
+                return await this.analyzeCrossOriginImage(imageElement.src, config);
             }
 
             const canvas = document.createElement('canvas');
@@ -29,15 +30,15 @@ class CGIDetector {
 
             ctx.drawImage(imageElement, 0, 0, 300, 300);
             const imageData = ctx.getImageData(0, 0, 300, 300);
-            
-            const metrics = this.analyzePixelPatterns(imageData);
+
+            const metrics = this.analyzePixelPatterns(imageData, config);
             return this.classifyFromMetrics(metrics);
         } catch (error) {
             // If canvas is tainted, try cross-origin analysis
             if (error.message.includes('tainted') || error.message.includes('cross-origin')) {
-                return await this.analyzeCrossOriginImage(imageElement.src);
+                return await this.analyzeCrossOriginImage(imageElement.src, config);
             }
-            
+
             console.warn('CGI analysis failed:', error.message);
             return this.classifyFromMetrics({ uniqueColors: 0, gradientRatio: 0 });
         }
@@ -46,7 +47,7 @@ class CGIDetector {
     /**
      * Analyze cross-origin images via background script
      */
-    async analyzeCrossOriginImage(srcUrl) {
+    async analyzeCrossOriginImage(srcUrl, config = {}) {
         try {
             // Try to get image data via background script
             const response = await new Promise((resolve, reject) => {
@@ -67,7 +68,7 @@ class CGIDetector {
                 // Create a blob and analyze it
                 const blob = new Blob([uint8Array]);
                 const imageUrl = URL.createObjectURL(blob);
-                
+
                 return new Promise((resolve) => {
                     const img = new Image();
                     img.crossOrigin = 'anonymous';
@@ -77,11 +78,11 @@ class CGIDetector {
                             const ctx = canvas.getContext('2d');
                             canvas.width = 300;
                             canvas.height = 300;
-                            
+
                             ctx.drawImage(img, 0, 0, 300, 300);
                             const imageData = ctx.getImageData(0, 0, 300, 300);
                             URL.revokeObjectURL(imageUrl);
-                            const metrics = this.analyzePixelPatterns(imageData);
+                            const metrics = this.analyzePixelPatterns(imageData, config);
                             resolve(this.classifyFromMetrics(metrics));
                         } catch (error) {
                             URL.revokeObjectURL(imageUrl);
@@ -128,17 +129,22 @@ class CGIDetector {
         }
     }
 
-    analyzePixelPatterns(imageData) {
+    analyzePixelPatterns(imageData, config = {}) {
         const { data: pixels, width, height } = imageData;
 
-        // Optimized sampling: use larger steps for speed, strategic positioning
-        const sampleStep = Math.max(1, Math.floor(Math.min(width, height) / 30)); // Adaptive sampling
-        const colorBuckets = new Map(); // Fast color bucketing
+        // Use configurable sampling density (30-100, default 50)
+        const samplingDensity = config.samplingDensity || 50;
+        const sampleStep = Math.max(2, Math.floor(Math.min(width, height) / samplingDensity));
+
+        // Use configurable color quantization (8-32 levels, default 16)
+        const colorQuantization = config.colorQuantization || 16;
+        const quantizationShift = Math.floor(8 - Math.log2(colorQuantization)); // 8→5, 16→4, 32→3
+
+        const colorBuckets = new Map();
         let smoothTransitions = 0;
         let totalComparisons = 0;
-        let sampledPixels = 0;
 
-        // Single-pass analysis: color counting + gradient analysis combined
+        // Single-pass analysis: color counting + gradient analysis
         for (let y = 0; y < height - sampleStep; y += sampleStep) {
             for (let x = 0; x < width - sampleStep; x += sampleStep) {
                 const i = (y * width + x) * 4;
@@ -147,20 +153,16 @@ class CGIDetector {
                 const b = pixels[i + 2];
                 const a = pixels[i + 3];
 
-                // Skip transparent/white pixels
+                // Skip transparent/near-white pixels
                 if (a < 125 || (r > 250 && g > 250 && b > 250)) continue;
 
-                sampledPixels++;
-
-                // Aggressive color quantization for speed (8 levels per channel = 512 total colors max)
-                const bucketR = (r >> 5) << 5; // Divide by 32, multiply by 32
-                const bucketG = (g >> 5) << 5;
-                const bucketB = (b >> 5) << 5;
-                const colorKey = (bucketR << 16) | (bucketG << 8) | bucketB; // Bit-packed key
-
+                // Configurable quantization using bit shifting
+                const colorKey = ((r >> quantizationShift) << (2 * (8 - quantizationShift))) |
+                                ((g >> quantizationShift) << (8 - quantizationShift)) |
+                                (b >> quantizationShift);
                 colorBuckets.set(colorKey, (colorBuckets.get(colorKey) || 0) + 1);
 
-                // Fast gradient check (right neighbor only for speed)
+                // Fast gradient check (right neighbor only)
                 const rightX = x + sampleStep;
                 if (rightX < width) {
                     const rightI = (y * width + rightX) * 4;
@@ -170,113 +172,34 @@ class CGIDetector {
                     const aR = pixels[rightI + 3];
 
                     if (aR >= 125) {
-                        // Fast approximate distance (Manhattan distance is faster than Euclidean)
-                        const colorDistance = Math.abs(r - rR) + Math.abs(g - gR) + Math.abs(b - bR);
-
-                        if (colorDistance < 30) smoothTransitions++; // Adjusted for Manhattan distance
+                        // Manhattan distance for speed
+                        const colorDist = Math.abs(r - rR) + Math.abs(g - gR) + Math.abs(b - bR);
+                        if (colorDist < 30) smoothTransitions++;
                         totalComparisons++;
                     }
                 }
             }
         }
 
-        // Extract palette efficiently (top 8 colors)
-        const topColors = Array.from(colorBuckets.entries())
-            .sort((a, b) => b[1] - a[1])
-            .slice(0, 8)
-            .map(([colorKey]) => [
-                (colorKey >> 16) & 0xFF,  // Extract R
-                (colorKey >> 8) & 0xFF,   // Extract G
-                colorKey & 0xFF           // Extract B
-            ]);
-
-        // Get dominant color (most frequent)
-        const dominantColorKey = colorBuckets.size > 0 ?
-            Array.from(colorBuckets.entries()).reduce((a, b) => a[1] > b[1] ? a : b)[0] : 0;
-
-        const dominantColor = [
-            (dominantColorKey >> 16) & 0xFF,
-            (dominantColorKey >> 8) & 0xFF,
-            dominantColorKey & 0xFF
-        ];
-
         return {
             uniqueColors: colorBuckets.size,
-            gradientRatio: totalComparisons > 0 ? parseFloat((smoothTransitions / totalComparisons).toFixed(3)) : 0,
-            paletteSize: topColors.length,
-            palette: topColors,
-            dominantColor,
-            sampledPixels // For debugging
+            gradientRatio: totalComparisons > 0 ? smoothTransitions / totalComparisons : 0
         };
     }
 
 
 
     classifyFromMetrics(metrics) {
-        const reasons = [];
-        let isCGI = false;
-        let isEdited = false;
-
-        // Adjusted thresholds for aggressive quantization (32-level quantization = max 512 colors)
-        // CGI/Digital art typically uses very limited color palettes
-
-        if (metrics.uniqueColors < 80) {
-            isCGI = true;
-            reasons.push('Low color count');
-        }
-
-        // Very smooth gradients indicate digital generation
-        if (metrics.gradientRatio > 0.7) {
-            if (isCGI) {
-                reasons.push('Unrealistic smooth gradient');
-            } else {
-                isCGI = true;
-                reasons.push('Unrealistic smooth gradient');
-            }
-        }
-
-        // Combined indicators for borderline cases
-        if (metrics.gradientRatio > 0.5 && metrics.uniqueColors < 120) {
-            if (!isCGI) {
-                isCGI = true;
-                reasons.push('Combined low colors and smooth gradients');
-            }
-        }
-
-        // Very limited palette indicates cartoon/animation
-        if (metrics.paletteSize <= 4) {
-            if (!isCGI) {
-                isCGI = true;
-                reasons.push('Very limited color palette');
-            }
-        }
-
-        // Photo editing detection for non-CGI images
-        if (!isCGI) {
-            if (metrics.uniqueColors < 200 && metrics.gradientRatio > 0.3) {
-                isEdited = true;
-                reasons.push('Possible photo editing detected');
-            }
-        }
-
-        // Fast confidence calculation
-        let confidence = 0;
-        if (isCGI) {
-            confidence = reasons.length >= 2 ? 90 : 85;
-        } else if (isEdited) {
-            confidence = 70;
-        }
-
+        // Simplified: just return metrics without classification
+        // Classification is now done in content.js for better flow control
         return {
-            isCGI,
-            isEdited,
-            reasons,
-            confidence,
+            isCGI: false, // Deprecated, kept for compatibility
+            isEdited: false, // Deprecated, kept for compatibility
+            reasons: [], // Deprecated, kept for compatibility
+            confidence: 0, // Deprecated, kept for compatibility
             metrics: {
                 uniqueColors: metrics.uniqueColors,
-                gradientRatio: metrics.gradientRatio,
-                paletteSize: metrics.paletteSize,
-                sampledPixels: metrics.sampledPixels
+                gradientRatio: metrics.gradientRatio
             },
             corsBlocked: false,
             filtersDetected: []

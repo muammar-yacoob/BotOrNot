@@ -1,29 +1,24 @@
 // Bot or Not Settings Controller
-// Handles settings interface and user preferences
-
 class SettingsManager {
   constructor() {
     this.defaultSettings = {
       autoScan: true,
       showOrganic: true,
-      signatureDetection: true,
-      colorAnalysis: true,
-      minImageSize: 100,
-      confidenceThreshold: 70
+      // Detection thresholds (calibrated for test.md actual measurements)
+      cartoonThreshold: 330,    // Below this = Cartoon (avg CGI=274, max=323)
+      cgiColorThreshold: 480,   // Below this + smooth gradient = CGI (neonStreet=471)
+      cgiGradientThreshold: 38, // Above this = CGI smoothness (CGI avg=50%, organic=26%)
+      filterGradientThreshold: 55, // Above this = Heavy filter
+      // Performance
+      samplingDensity: 50,      // Balance of speed and accuracy (~2500 pixels)
+      colorQuantization: 16     // 16 levels per channel (4096 max colors)
     };
-    
-    this.stats = {
-      imagesAnalyzed: 0,
-      aiDetected: 0,
-      organicDetected: 0
-    };
-    
+
     this.init();
   }
 
   async init() {
     await this.loadSettings();
-    await this.loadStats();
     this.setupEventListeners();
     this.updateUI();
   }
@@ -38,50 +33,39 @@ class SettingsManager {
     }
   }
 
-  async loadStats() {
-    try {
-      const result = await chrome.storage.local.get(['stats']);
-      this.stats = { ...this.stats, ...result.stats };
-    } catch (error) {
-      console.error('Failed to load stats:', error);
-    }
-  }
-
   async saveSettings() {
     try {
       await chrome.storage.sync.set(this.settings);
-      this.showNotification('Settings saved successfully!', 'success');
+      this.showNotification('✓ Settings saved', 'success');
+
+      // Notify all tabs to reload settings
+      chrome.tabs.query({}, (tabs) => {
+        tabs.forEach(tab => {
+          chrome.tabs.sendMessage(tab.id, { action: 'settingsUpdated', settings: this.settings }).catch(() => {});
+        });
+      });
     } catch (error) {
       console.error('Failed to save settings:', error);
-      this.showNotification('Failed to save settings', 'error');
-    }
-  }
-
-  async saveStats() {
-    try {
-      await chrome.storage.local.set({ stats: this.stats });
-    } catch (error) {
-      console.error('Failed to save stats:', error);
+      this.showNotification('✗ Save failed', 'error');
     }
   }
 
   setupEventListeners() {
-    // Save settings button
+    // Save button
     document.getElementById('save-settings').addEventListener('click', () => {
       this.saveSettings();
     });
 
-    // Reset settings button
+    // Reset button
     document.getElementById('reset-settings').addEventListener('click', () => {
-      this.resetSettings();
+      if (confirm('Reset all settings to defaults?')) {
+        this.settings = { ...this.defaultSettings };
+        this.saveSettings();
+        this.updateUI();
+      }
     });
 
-    // Export data button
-    document.getElementById('export-data').addEventListener('click', () => {
-      this.exportData();
-    });
-
-    // Checkbox changes
+    // Checkboxes
     document.getElementById('auto-scan').addEventListener('change', (e) => {
       this.settings.autoScan = e.target.checked;
     });
@@ -90,159 +74,74 @@ class SettingsManager {
       this.settings.showOrganic = e.target.checked;
     });
 
-    document.getElementById('signature-detection').addEventListener('change', (e) => {
-      this.settings.signatureDetection = e.target.checked;
-    });
+    // Sliders with live value update
+    this.setupSlider('cartoon-threshold', 'cartoon-threshold-value', 'cartoonThreshold');
+    this.setupSlider('cgi-color-threshold', 'cgi-color-value', 'cgiColorThreshold');
+    this.setupSlider('cgi-gradient-threshold', 'cgi-gradient-value', 'cgiGradientThreshold');
+    this.setupSlider('filter-gradient-threshold', 'filter-gradient-value', 'filterGradientThreshold');
+    this.setupSlider('sampling-density', 'sampling-value', 'samplingDensity');
+    this.setupSlider('color-quantization', 'quantization-value', 'colorQuantization');
+  }
 
-    document.getElementById('color-analysis').addEventListener('change', (e) => {
-      this.settings.colorAnalysis = e.target.checked;
-    });
+  setupSlider(sliderId, valueId, settingKey) {
+    const slider = document.getElementById(sliderId);
+    const valueDisplay = document.getElementById(valueId);
 
-    // Number input changes
-    document.getElementById('min-image-size').addEventListener('change', (e) => {
-      this.settings.minImageSize = parseInt(e.target.value);
-    });
-
-    // Range input changes
-    const confidenceSlider = document.getElementById('confidence-threshold');
-    const confidenceValue = document.getElementById('confidence-value');
-    
-    confidenceSlider.addEventListener('input', (e) => {
-      this.settings.confidenceThreshold = parseInt(e.target.value);
-      confidenceValue.textContent = `${e.target.value}%`;
+    slider.addEventListener('input', (e) => {
+      const value = parseInt(e.target.value);
+      this.settings[settingKey] = value;
+      valueDisplay.textContent = value;
     });
   }
 
   updateUI() {
-    // Update checkboxes
+    // Checkboxes
     document.getElementById('auto-scan').checked = this.settings.autoScan;
     document.getElementById('show-organic').checked = this.settings.showOrganic;
-    document.getElementById('signature-detection').checked = this.settings.signatureDetection;
-    document.getElementById('color-analysis').checked = this.settings.colorAnalysis;
 
-    // Update number inputs
-    document.getElementById('min-image-size').value = this.settings.minImageSize;
-
-    // Update range input
-    const confidenceSlider = document.getElementById('confidence-threshold');
-    const confidenceValue = document.getElementById('confidence-value');
-    confidenceSlider.value = this.settings.confidenceThreshold;
-    confidenceValue.textContent = `${this.settings.confidenceThreshold}%`;
-
-    // Update statistics
-    document.getElementById('images-analyzed').textContent = this.stats.imagesAnalyzed;
-    document.getElementById('ai-detected').textContent = this.stats.aiDetected;
-    document.getElementById('organic-detected').textContent = this.stats.organicDetected;
+    // Sliders
+    this.updateSlider('cartoon-threshold', 'cartoon-threshold-value', this.settings.cartoonThreshold);
+    this.updateSlider('cgi-color-threshold', 'cgi-color-value', this.settings.cgiColorThreshold);
+    this.updateSlider('cgi-gradient-threshold', 'cgi-gradient-value', this.settings.cgiGradientThreshold);
+    this.updateSlider('filter-gradient-threshold', 'filter-gradient-value', this.settings.filterGradientThreshold);
+    this.updateSlider('sampling-density', 'sampling-value', this.settings.samplingDensity);
+    this.updateSlider('color-quantization', 'quantization-value', this.settings.colorQuantization);
   }
 
-  async resetSettings() {
-    if (confirm('Are you sure you want to reset all settings to defaults?')) {
-      this.settings = { ...this.defaultSettings };
-      await this.saveSettings();
-      this.updateUI();
-      this.showNotification('Settings reset to defaults', 'success');
-    }
-  }
-
-  async exportData() {
-    try {
-      const data = {
-        settings: this.settings,
-        stats: this.stats,
-        exportDate: new Date().toISOString(),
-        version: '1.0.0'
-      };
-
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `bot-or-not-data-${new Date().toISOString().split('T')[0]}.json`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-
-      this.showNotification('Data exported successfully!', 'success');
-    } catch (error) {
-      console.error('Failed to export data:', error);
-      this.showNotification('Failed to export data', 'error');
-    }
+  updateSlider(sliderId, valueId, value) {
+    document.getElementById(sliderId).value = value;
+    document.getElementById(valueId).textContent = value;
   }
 
   showNotification(message, type = 'info') {
-    // Create notification element
     const notification = document.createElement('div');
-    notification.className = `notification notification-${type}`;
     notification.textContent = message;
-    
-    // Style the notification
+
     Object.assign(notification.style, {
       position: 'fixed',
       top: '20px',
       right: '20px',
-      padding: '12px 20px',
-      borderRadius: '8px',
+      padding: '10px 16px',
+      borderRadius: '6px',
       color: 'white',
       fontWeight: '500',
+      fontSize: '14px',
       zIndex: '10000',
       transform: 'translateX(100%)',
       transition: 'transform 0.3s ease',
-      maxWidth: '300px',
-      wordWrap: 'break-word'
+      backgroundColor: type === 'success' ? '#10b981' : '#ef4444'
     });
 
-    // Set background color based on type
-    const colors = {
-      success: '#10b981',
-      error: '#ef4444',
-      warning: '#f59e0b',
-      info: '#3b82f6'
-    };
-    notification.style.backgroundColor = colors[type] || colors.info;
-
-    // Add to page
     document.body.appendChild(notification);
-
-    // Animate in
-    setTimeout(() => {
-      notification.style.transform = 'translateX(0)';
-    }, 100);
-
-    // Remove after delay
+    setTimeout(() => { notification.style.transform = 'translateX(0)'; }, 100);
     setTimeout(() => {
       notification.style.transform = 'translateX(100%)';
-      setTimeout(() => {
-        if (notification.parentNode) {
-          notification.parentNode.removeChild(notification);
-        }
-      }, 300);
-    }, 3000);
+      setTimeout(() => notification.remove(), 300);
+    }, 2000);
   }
 }
 
-// Initialize settings manager when DOM is loaded
+// Initialize
 document.addEventListener('DOMContentLoaded', () => {
   new SettingsManager();
-});
-
-// Listen for messages from content script to update stats
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.action === 'updateStats') {
-    // Update stats in settings page if it's open
-    const imagesAnalyzed = document.getElementById('images-analyzed');
-    const aiDetected = document.getElementById('ai-detected');
-    const organicDetected = document.getElementById('organic-detected');
-    
-    if (imagesAnalyzed) {
-      imagesAnalyzed.textContent = message.stats.imagesAnalyzed || 0;
-    }
-    if (aiDetected) {
-      aiDetected.textContent = message.stats.aiDetected || 0;
-    }
-    if (organicDetected) {
-      organicDetected.textContent = message.stats.organicDetected || 0;
-    }
-  }
 });
